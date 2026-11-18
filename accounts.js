@@ -51,6 +51,16 @@ render = function () {
     row.setAttribute('tabindex', '0');
     row.setAttribute('aria-label', `Voir toutes les opérations du compte ${account.name}`);
     row.dataset.accountId = account.id;
+    if (!row.querySelector('[data-edit-account]')) {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'edit-account-button';
+      edit.dataset.editAccount = account.id;
+      edit.setAttribute('aria-label', `Modifier le compte ${account.name}`);
+      edit.title = 'Modifier le compte';
+      edit.textContent = '✎';
+      row.append(edit);
+    }
   });
   renderAccountHistory();
 };
@@ -60,6 +70,16 @@ function openNewAccountDialog() {
   document.getElementById('new-account-balance').value = '0.00';
   document.getElementById('new-account-dialog').showModal();
   document.getElementById('new-account-name').focus();
+}
+function openEditAccountDialog(accountId) {
+  const account = state.accounts.find(item => item.id === accountId);
+  if (!account) return;
+  document.getElementById('edit-account-id').value = account.id;
+  document.getElementById('edit-account-name').value = account.name;
+  document.getElementById('edit-account-kind').value = account.kind || 'Autre compte';
+  document.getElementById('edit-account-dialog').showModal();
+  document.getElementById('edit-account-name').focus();
+  document.getElementById('edit-account-name').select();
 }
 
 document.getElementById('add-account').addEventListener('click', openNewAccountDialog);
@@ -80,8 +100,31 @@ document.getElementById('new-account-form').addEventListener('submit', event => 
   document.getElementById('new-account-dialog').close();
   render();
 });
+document.getElementById('close-edit-account').addEventListener('click', () => document.getElementById('edit-account-dialog').close());
+document.getElementById('cancel-edit-account').addEventListener('click', () => document.getElementById('edit-account-dialog').close());
+document.getElementById('edit-account-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const id = document.getElementById('edit-account-id').value;
+  const account = state.accounts.find(item => item.id === id);
+  const name = document.getElementById('edit-account-name').value.trim();
+  const kind = document.getElementById('edit-account-kind').value;
+  if (!account || !name) return;
+  if (state.accounts.some(item => item.id !== id && item.name.toLocaleLowerCase('fr') === name.toLocaleLowerCase('fr'))) {
+    alert('Un compte porte déjà ce nom. Choisissez un autre nom.');
+    return;
+  }
+  const icons = { 'Compte courant': '▤', 'Épargne': '◈', 'Autre compte': '◫' };
+  account.name = name;
+  account.kind = kind;
+  account.icon = icons[kind] || '▤';
+  saveState();
+  document.getElementById('edit-account-dialog').close();
+  render();
+});
 
 document.getElementById('accounts-list').addEventListener('click', event => {
+  const editButton = event.target.closest('[data-edit-account]');
+  if (editButton) { event.stopPropagation(); openEditAccountDialog(editButton.dataset.editAccount); return; }
   const row = event.target.closest('[data-account-id]');
   if (!row) return;
   accountHistory.selectedId = accountHistory.selectedId === row.dataset.accountId ? null : row.dataset.accountId;
