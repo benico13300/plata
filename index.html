@@ -1,1 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f4">
+  <meta name="description" content="Suivez vos comptes et vos opérations mois par mois.">
+  <title>Plata — Tableau de bord</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navigation principale">
+      <a class="brand" href="./" aria-label="Plata, accueil"><span class="brand-mark">P</span><span>plata<span class="brand-dot">.</span></span></a>
+      <div class="side-label">ESPACE PERSONNEL</div>
+      <a class="nav-link active" href="#dashboard"><span class="nav-icon" aria-hidden="true">▦</span> Tableau de bord</a>
+      <a class="nav-link" href="#operations"><span class="nav-icon" aria-hidden="true">↕</span> Opérations</a>
+      <a class="nav-link" href="#accounts"><span class="nav-icon" aria-hidden="true">▤</span> Mes comptes</a>
+      <div class="sidebar-bottom"><span class="local-dot"></span> Version locale<br><small>Les données restent sur cet appareil.</small></div>
+    </aside>
 
+    <main class="main-content" id="dashboard">
+      <header class="topbar">
+        <div><p class="eyebrow">VOTRE ARGENT, EN UN COUP D’ŒIL</p><h1>Tableau de bord</h1></div>
+        <button class="button button-primary top-add" id="open-operation" type="button"><span aria-hidden="true">＋</span> Nouvelle opération</button>
+      </header>
+
+      <section class="month-toolbar" aria-label="Choisir le mois">
+        <div class="month-controls"><button class="icon-button" id="previous-month" type="button" aria-label="Mois précédent">‹</button><h2 id="month-label"></h2><button class="icon-button" id="next-month" type="button" aria-label="Mois suivant">›</button></div>
+        <button class="text-button" id="current-month" type="button">Aujourd’hui</button>
+      </section>
+
+      <section class="summary-grid" aria-label="Résumé financier">
+        <article class="summary-card summary-primary"><div class="card-heading"><span>Trésorerie prévisionnelle</span><span class="summary-icon">↗</span></div><strong id="forecast-total" class="summary-value">0,00 €</strong><p>En tenant compte des opérations prévues</p></article>
+        <article class="summary-card"><div class="card-heading"><span>Solde réalisé</span><span class="summary-icon soft">✓</span></div><strong id="actual-total" class="summary-value">0,00 €</strong><p>Opérations réalisées jusqu’à la fin du mois</p></article>
+        <article class="summary-card"><div class="card-heading"><span>À venir ce mois-ci</span><span class="summary-icon soft">◷</span></div><strong id="upcoming-total" class="summary-value">0,00 €</strong><p id="upcoming-count">Aucune opération prévue</p></article>
+      </section>
+
+      <div class="content-grid">
+        <section class="panel accounts-panel" id="accounts">
+          <div class="panel-heading"><div><p class="eyebrow">VOS COMPTES</p><h2>Répartition</h2></div><button class="text-button" id="edit-balances" type="button">Modifier les soldes initiaux</button></div>
+          <div id="accounts-list" class="accounts-list"></div>
+          <div class="total-row"><span>Total des comptes</span><strong id="accounts-total">0,00 €</strong></div>
+        </section>
+        <section class="panel month-panel">
+          <div class="panel-heading"><div><p class="eyebrow">CE MOIS-CI</p><h2>Votre activité</h2></div><span class="activity-badge" id="activity-count">0 opération</span></div>
+          <div class="activity-row"><span class="activity-symbol income-symbol">↙</span><span class="activity-label">Entrées</span><strong class="positive" id="month-income">0,00 €</strong></div>
+          <div class="activity-row"><span class="activity-symbol expense-symbol">↗</span><span class="activity-label">Sorties</span><strong id="month-expenses">0,00 €</strong></div>
+          <div class="activity-row"><span class="activity-symbol transfer-symbol">⇄</span><span class="activity-label">Virements et épargne</span><strong id="month-transfers">0,00 €</strong></div>
+          <div class="activity-note">Les virements et l’épargne déplacent l’argent entre vos comptes sans modifier la trésorerie totale.</div>
+        </section>
+      </div>
+
+      <section class="panel transactions-panel" id="operations">
+        <div class="panel-heading transactions-heading"><div><p class="eyebrow">SUIVI MENSUEL</p><h2>Opérations</h2></div><label class="filter-wrap"><span class="visually-hidden">Filtrer les opérations</span><select id="operation-filter"><option value="all">Toutes les opérations</option><option value="planned">À venir</option><option value="realized">Réalisées</option></select></label></div>
+        <div id="transactions-list" class="transactions-list"></div>
+        <div id="empty-state" class="empty-state"><span class="empty-icon">↕</span><h3>Rien à afficher pour le moment</h3><p>Ajoutez une opération pour commencer à suivre votre budget.</p><button class="button button-secondary" id="empty-add" type="button">＋ Ajouter une opération</button></div>
+      </section>
+      <footer class="page-footer">Plata <span>·</span> Première version — données enregistrées dans ce navigateur</footer>
+    </main>
+  </div>
+
+  <dialog id="operation-dialog" class="operation-dialog">
+    <form id="operation-form" method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">VOTRE BUDGET</p><h2>Nouvelle opération</h2></div><button class="icon-button close-button" type="button" id="close-dialog" aria-label="Fermer">×</button></div>
+      <div class="form-grid">
+        <label class="field field-wide">Type<select id="operation-type" required><option value="income">Entrée d’argent</option><option value="card">Carte bancaire</option><option value="direct-debit">Prélèvement</option><option value="withdrawal">Retrait</option><option value="transfer">Virement</option><option value="savings">Épargne</option></select></label>
+        <label class="field">Montant (€)<input id="operation-amount" type="number" min="0.01" step="0.01" placeholder="0,00" required></label>
+        <label class="field">Date<input id="operation-date" type="date" required></label>
+        <label class="field" id="source-account-field">Compte<select id="source-account" required></select></label>
+        <label class="field hidden" id="destination-account-field">Compte destinataire<select id="destination-account"></select></label>
+        <label class="field" id="category-field">Catégorie<select id="operation-category"></select></label>
+        <label class="field field-wide">Libellé<input id="operation-title" type="text" maxlength="80" placeholder="Ex. Assurance habitation" required></label>
+        <label class="field field-wide check-field"><input id="operation-recurring" type="checkbox"><span>Créer plusieurs occurrences mensuelles identiques</span></label>
+        <label class="field hidden" id="occurrences-field">Nombre de prélèvements<input id="operation-occurrences" type="number" min="2" max="120" value="10"></label>
+        <label class="field field-wide check-field"><input id="operation-realized" type="checkbox"><span>Cette opération est déjà réalisée</span></label>
+      </div>
+      <p class="form-hint" id="type-hint">Le type détermine automatiquement l’effet sur vos comptes.</p>
+      <div class="dialog-actions"><button class="button button-secondary" id="cancel-dialog" type="button">Annuler</button><button class="button button-primary" type="submit">Enregistrer</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="balances-dialog" class="operation-dialog compact-dialog">
+    <form id="balances-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">MISE EN ROUTE</p><h2>Soldes initiaux</h2></div><button class="icon-button close-button" type="button" id="close-balances" aria-label="Fermer">×</button></div><p class="balance-intro">Saisissez le solde de chaque compte au démarrage. Par défaut, ils sont à zéro.</p><div id="balance-fields" class="form-grid"></div><div class="dialog-actions"><button class="button button-secondary" type="button" id="cancel-balances">Annuler</button><button class="button button-primary" type="submit">Enregistrer</button></div></form>
+  </dialog>
+  <script src="./app.js" defer></script>
+</body>
+</html>
