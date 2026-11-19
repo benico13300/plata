@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<title id="title">Emblème doré Plata</title><desc id="desc">Emblème solaire doré inspiré du logo fourni, sur fond brun cuivré.</desc>
+<defs>
+ <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#5b2305"/><stop offset=".5" stop-color="#9b3e08"/><stop offset="1" stop-color="#3a1606"/></linearGradient>
+ <linearGradient id="gold" x2="0" y2="1"><stop stop-color="#fff5a0"/><stop offset=".23" stop-color="#ffdb3e"/><stop offset=".58" stop-color="#ff9e08"/><stop offset=".82" stop-color="#c85a08"/><stop offset="1" stop-color="#ffe76b"/></linearGradient>
+ <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="7"/><feOffset dy="6"/><feComponentTransfer><feFuncA type="linear" slope=".7"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
+<rect x="16" y="16" width="480" height="480" rx="105" fill="url(#bg)" stroke="url(#gold)" stroke-width="15"/>
+<rect x="35" y="35" width="442" height="442" rx="88" fill="none" stroke="#ffcf35" stroke-opacity=".55" stroke-width="3"/>
+<g fill="url(#gold)" stroke="#8c3600" stroke-width="7" stroke-linejoin="round" filter="url(#shadow)">
+ <!-- sun rays -->
+ <path d="M256 58l22 54h-44zM168 75l40 47-51 8zM344 75l11 55-51-8zM95 126l55 19-42 34zM417 126l-13 53-42-34zM68 204l58-4-29 48zM444 204l-29 44-29-48z"/>
+ <!-- ceremonial headdress -->
+ <path d="M133 194q123-93 246 0l-20 27q-103-69-206 0z"/>
+ <!-- face -->
+ <path d="M145 221q0-24 25-24h172q25 0 25 24v118q0 80-111 105-111-25-111-105z"/>
+ <!-- brows and eyes -->
+ <path d="M175 260q40-32 81 0l-13 18q-28-19-55 0zM256 260q41-32 81 0l-13 18q-28-19-55 0z"/>
+ <path d="M184 291q31-31 63 0-31 31-63 0M265 291q31-31 63 0-31 31-63 0" fill="#602306" stroke="#ffcf31" stroke-width="5"/>
+ <circle cx="215" cy="291" r="8" fill="#ffd637" stroke="none"/><circle cx="296" cy="291" r="8" fill="#ffd637" stroke="none"/>
+ <!-- nose and mouth -->
+ <path d="M239 302h34l15 47h-64zM204 371q52-29 104 0v24q-52 29-104 0z" fill="#692806" stroke="#ffd238" stroke-width="7"/>
+ <path d="M222 381h68" fill="none" stroke="#ffcf31" stroke-width="7"/>
+ <!-- ear ornaments -->
+ <circle cx="139" cy="303" r="23"/><circle cx="373" cy="303" r="23"/><circle cx="139" cy="303" r="9" fill="#642407"/><circle cx="373" cy="303" r="9" fill="#642407"/>
+ <!-- lower geometric ornament -->
+ <path d="M189 438h40v17h-20v17h-20zM242 430h28v42h-28zM283 438h40v34h-20v-17h-20z"/>
+</g>
+</svg>

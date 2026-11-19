@@ -1,5 +1,5 @@
-const CACHE_NAME = 'plata-shell-v2';
-const APP_SHELL = ['./', './index.html', './styles.css', './accounts.css', './app.js', './accounts.js', './manifest.webmanifest', './icon.svg'];
+const CACHE_NAME = 'plata-shell-v3';
+const APP_SHELL = ['./', './index.html', './styles.css', './accounts.css', './app.js', './accounts.js', './manifest.webmanifest', './icon.svg', './logo.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));

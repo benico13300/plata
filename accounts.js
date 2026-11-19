@@ -17,6 +17,12 @@ accountStyles.textContent = `
 .edit-account-button:hover{background:#edf4ef}
 .operation-dialog.account-dialog,.operation-dialog#new-account-dialog{box-sizing:border-box;width:min(430px,calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;margin:auto}
 @media(max-width:700px){.operation-dialog.account-dialog,.operation-dialog#new-account-dialog{width:calc(100vw - 28px);max-width:calc(100vw - 28px);max-height:calc(100vh - 28px);max-height:calc(100dvh - 28px);padding:19px 16px}.account-row{gap:6px;padding-left:5px;padding-right:5px}.edit-account-button{flex-basis:42px;width:42px;height:42px}.account-select-button{min-height:44px}}
+.brand{display:flex;align-items:center;gap:10px!important;text-decoration:none}
+.brand .brand-mark{display:none!important}
+.brand .brand-word{font-family:'Manrope',sans-serif;font-size:23px;font-weight:800;letter-spacing:-1.3px;color:#39200e}
+.brand .brand-word span{color:#d58a17}
+.brand .brand-emblem{display:block;width:42px;height:42px;flex:0 0 42px;object-fit:contain;border-radius:11px}
+@media(max-width:700px){.brand{gap:7px!important}.brand .brand-emblem{width:34px;height:34px;flex-basis:34px}.brand .brand-word{font-size:20px}}
 `;
 document.head.append(accountStyles);
 
@@ -111,6 +117,14 @@ function openEditAccountDialog(accountId) {
   document.getElementById('edit-account-dialog').showModal();
   document.getElementById('edit-account-name').focus();
   document.getElementById('edit-account-name').select();
+}
+
+// Replace the placeholder wordmark with the supplied gold-themed emblem and
+// keep the application name as live, accessible text.
+const brand = document.querySelector('.brand');
+if (brand) {
+  brand.innerHTML = '<img class="brand-emblem" src="./logo.svg" alt=""><span class="brand-word">Plata<span>.</span></span>';
+  brand.setAttribute('aria-label', 'Plata, accueil');
 }
 
 document.getElementById('add-account').addEventListener('click', openNewAccountDialog);
