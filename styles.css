@@ -39,3 +39,15 @@
 .account-open{color:#9aa79c;font-size:18px;margin-left:8px}
 .account-filter-chip{border:1px solid #cfe0d3;background:#edf5ef;color:var(--green-dark);border-radius:20px;padding:7px 12px;font:600 11px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
 .account-filter-chip:hover{background:#e0eee4}
+/* ---- Filtre par type d'opération ---- */
+.type-filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.type-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #dfe5de;background:#fff;color:#4c584e;border-radius:20px;padding:7px 11px;font:600 11px 'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s}
+.type-chip:hover{background:#f3f7f3}
+.type-chip .chip-count{color:#8a948b;font-weight:500}
+.type-chip.is-empty{opacity:.5}
+.type-chip.is-active{background:var(--green);border-color:var(--green);color:#fff}
+.type-chip.is-active .chip-count{color:#d8e6dc}
+.type-chip.is-active.is-empty{opacity:1}
+.filter-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#f3f7f3;border-radius:9px;padding:8px 12px;margin:0 0 6px;font-size:12px;color:#4c584e}
+.filter-summary .text-button{padding:4px 2px;white-space:nowrap}
+@media(max-width:700px){.type-filters{flex-wrap:nowrap;overflow-x:auto;margin-right:-15px;padding-right:15px;padding-bottom:4px;scrollbar-width:none}.type-filters::-webkit-scrollbar{display:none}.type-chip{flex:0 0 auto}}
