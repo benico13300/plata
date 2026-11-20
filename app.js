@@ -253,6 +253,7 @@ function render() {
   const monthKey = toMonthKey(displayedMonth);
   const monthEnd = dateEndOfMonth(displayedMonth);
   $('month-label').textContent = monthFormatter.format(displayedMonth);
+  $('stats-month-label').textContent = monthFormatter.format(displayedMonth);
 
   const accounts = visibleAccounts();
   const monthOperations = visibleOperations().filter(operation => operation.date.startsWith(monthKey)).sort((a, b) => a.date.localeCompare(b.date));
@@ -499,10 +500,12 @@ function openEditAccount(accountId) {
 }
 
 /* ---------- Administration ---------- */
-// Trois écrans : tableau de bord (« dash »), administration (« admin ») et opérations récurrentes (« recurring »).
+// Écrans : tableau de bord (« dash »), statistiques (« stats »), opérations récurrentes (« recurring ») et administration (« admin »).
 function showView(name) {
   $('dashboard').classList.toggle('admin-active', name === 'admin');
   $('dashboard').classList.toggle('recurring-active', name === 'recurring');
+  $('dashboard').classList.toggle('stats-active', name === 'stats');
+  $('stats-nav-link').classList.toggle('active', name === 'stats');
   $('admin-nav-link').classList.toggle('active', name === 'admin');
   $('recurring-nav-link').classList.toggle('active', name === 'recurring');
   $('nav-dashboard').classList.toggle('active', name === 'dash');
@@ -510,7 +513,7 @@ function showView(name) {
   if (name === 'recurring') renderRecurring();
 }
 function setAdminView(active) { showView(active ? 'admin' : 'dash'); }
-function viewFromHash() { return location.hash === '#admin' ? 'admin' : location.hash === '#recurring' ? 'recurring' : 'dash'; }
+function viewFromHash() { return location.hash === '#admin' ? 'admin' : location.hash === '#recurring' ? 'recurring' : location.hash === '#statistiques' ? 'stats' : 'dash'; }
 function renderAdmin() {
   const current = selectedAccountId();
   $('admin-default-account').innerHTML = '<option value="">Tous les comptes</option>' + state.accounts.map(account => `<option value="${escapeHTML(account.id)}">${escapeHTML(account.name)}</option>`).join('');
@@ -528,6 +531,9 @@ function changeMonth(offset) { displayedMonth = new Date(displayedMonth.getFullY
 $('previous-month').addEventListener('click', () => changeMonth(-1));
 $('next-month').addEventListener('click', () => changeMonth(1));
 $('current-month').addEventListener('click', () => { displayedMonth = new Date(); displayedMonth.setDate(1); render(); });
+$('stats-previous-month').addEventListener('click', () => changeMonth(-1));
+$('stats-next-month').addEventListener('click', () => changeMonth(1));
+$('stats-current-month').addEventListener('click', () => { displayedMonth = new Date(); displayedMonth.setDate(1); render(); });
 $('open-operation').addEventListener('click', () => openOperationDialog());
 $('empty-add').addEventListener('click', () => openOperationDialog());
 $('operation-place').addEventListener('change', () => { updatePlaceOther(); if ($('operation-place').value === PLACE_OTHER) $('operation-place-other').focus(); });
@@ -621,9 +627,11 @@ $('edit-account-form').addEventListener('submit', event => {
 // Administration : navigation
 $('admin-nav-link').addEventListener('click', event => { event.preventDefault(); history.replaceState(null, '', '#admin'); setAdminView(true); window.scrollTo(0, 0); });
 $('admin-back').addEventListener('click', () => { history.replaceState(null, '', location.pathname + location.search); setAdminView(false); });
+$('stats-nav-link').addEventListener('click', event => { event.preventDefault(); history.replaceState(null, '', '#statistiques'); showView('stats'); window.scrollTo(0, 0); });
+$('stats-back').addEventListener('click', () => { history.replaceState(null, '', location.pathname + location.search); showView('dash'); });
 $('recurring-nav-link').addEventListener('click', event => { event.preventDefault(); history.replaceState(null, '', '#recurring'); showView('recurring'); window.scrollTo(0, 0); });
 $('recurring-back').addEventListener('click', () => { history.replaceState(null, '', location.pathname + location.search); showView('dash'); });
-document.querySelectorAll('.sidebar .nav-link:not(#admin-nav-link):not(#recurring-nav-link)').forEach(link => link.addEventListener('click', () => showView('dash')));
+document.querySelectorAll('.sidebar .nav-link:not(#admin-nav-link):not(#recurring-nav-link):not(#stats-nav-link)').forEach(link => link.addEventListener('click', () => showView('dash')));
 window.addEventListener('hashchange', () => showView(viewFromHash()));
 
 // Administration : compte affiché et comptes
