@@ -3,11 +3,10 @@
   "private": true,
   "description": "Plata — gestion de comptes personnels (PWA + Firebase)",
   "scripts": {
-    "build": "esbuild src/cloud.js --bundle --minify --format=iife --target=es2020 --outfile=cloud.bundle.js && esbuild src/excel.js --bundle --minify --format=iife --target=es2020 --outfile=excel.bundle.js"
+    "build": "esbuild src/cloud.js --bundle --minify --format=iife --target=es2020 --outfile=cloud.bundle.js"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
-    "firebase": "^11.0.0",
-    "xlsx": "^0.18.5"
+    "firebase": "^11.0.0"
   }
 }
