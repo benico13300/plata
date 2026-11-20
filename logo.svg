@@ -1,29 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-<title id="title">Emblème doré Plata</title><desc id="desc">Emblème solaire doré inspiré du logo fourni, sur fond brun cuivré.</desc>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+<title id="title">PLATA — logo vectoriel</title>
+<desc id="desc">Logo doré Plata avec masque solaire géométrique d'inspiration maya.</desc>
 <defs>
- <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#5b2305"/><stop offset=".5" stop-color="#9b3e08"/><stop offset="1" stop-color="#3a1606"/></linearGradient>
- <linearGradient id="gold" x2="0" y2="1"><stop stop-color="#fff5a0"/><stop offset=".23" stop-color="#ffdb3e"/><stop offset=".58" stop-color="#ff9e08"/><stop offset=".82" stop-color="#c85a08"/><stop offset="1" stop-color="#ffe76b"/></linearGradient>
- <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="7"/><feOffset dy="6"/><feComponentTransfer><feFuncA type="linear" slope=".7"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+ <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff5ad"/><stop offset=".25" stop-color="#ffd83e"/><stop offset=".58" stop-color="#f39b08"/><stop offset=".82" stop-color="#bd5b08"/><stop offset="1" stop-color="#ffe779"/></linearGradient>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#78300d"/><stop offset=".5" stop-color="#351307"/><stop offset="1" stop-color="#8b390b"/></linearGradient>
+ <radialGradient id="halo"><stop stop-color="#ffb51c" stop-opacity=".42"/><stop offset="1" stop-color="#ff9d00" stop-opacity="0"/></radialGradient>
+ <filter id="depth" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="7" result="b"/><feOffset dy="8" result="o"/><feComponentTransfer><feFuncA type="linear" slope=".55"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
-<rect x="16" y="16" width="480" height="480" rx="105" fill="url(#bg)" stroke="url(#gold)" stroke-width="15"/>
-<rect x="35" y="35" width="442" height="442" rx="88" fill="none" stroke="#ffcf35" stroke-opacity=".55" stroke-width="3"/>
-<g fill="url(#gold)" stroke="#8c3600" stroke-width="7" stroke-linejoin="round" filter="url(#shadow)">
- <!-- sun rays -->
- <path d="M256 58l22 54h-44zM168 75l40 47-51 8zM344 75l11 55-51-8zM95 126l55 19-42 34zM417 126l-13 53-42-34zM68 204l58-4-29 48zM444 204l-29 44-29-48z"/>
- <!-- ceremonial headdress -->
- <path d="M133 194q123-93 246 0l-20 27q-103-69-206 0z"/>
- <!-- face -->
- <path d="M145 221q0-24 25-24h172q25 0 25 24v118q0 80-111 105-111-25-111-105z"/>
- <!-- brows and eyes -->
- <path d="M175 260q40-32 81 0l-13 18q-28-19-55 0zM256 260q41-32 81 0l-13 18q-28-19-55 0z"/>
- <path d="M184 291q31-31 63 0-31 31-63 0M265 291q31-31 63 0-31 31-63 0" fill="#602306" stroke="#ffcf31" stroke-width="5"/>
- <circle cx="215" cy="291" r="8" fill="#ffd637" stroke="none"/><circle cx="296" cy="291" r="8" fill="#ffd637" stroke="none"/>
- <!-- nose and mouth -->
- <path d="M239 302h34l15 47h-64zM204 371q52-29 104 0v24q-52 29-104 0z" fill="#692806" stroke="#ffd238" stroke-width="7"/>
- <path d="M222 381h68" fill="none" stroke="#ffcf31" stroke-width="7"/>
- <!-- ear ornaments -->
- <circle cx="139" cy="303" r="23"/><circle cx="373" cy="303" r="23"/><circle cx="139" cy="303" r="9" fill="#642407"/><circle cx="373" cy="303" r="9" fill="#642407"/>
- <!-- lower geometric ornament -->
- <path d="M189 438h40v17h-20v17h-20zM242 430h28v42h-28zM283 438h40v34h-20v-17h-20z"/>
+<rect width="1024" height="1024" rx="180" fill="url(#bg)"/>
+<ellipse cx="512" cy="470" rx="450" ry="430" fill="url(#halo)"/>
+<rect x="62" y="62" width="900" height="900" rx="142" fill="none" stroke="url(#gold)" stroke-width="20" filter="url(#depth)"/>
+<rect x="84" y="84" width="856" height="856" rx="126" fill="none" stroke="#ffdf64" stroke-width="3" opacity=".55"/>
+<!-- Rays -->
+<g fill="url(#gold)" stroke="#78350a" stroke-width="5" stroke-linejoin="round">
+ <path d="M493 126h38v66h-38z M330 169l34-24 43 61-34 24z M660 145l34 24-43 61-34-24z"/>
+ <path d="M252 270l19-36 66 35-19 36z M753 269l19-36 66 35-19 36z M220 385l9-39 72 17-9 39z M795 363l72-17 9 39-72 17z"/>
+</g>
+<!-- Solar mask -->
+<g filter="url(#depth)" stroke="#713008" stroke-width="8" stroke-linejoin="round">
+ <path d="M512 174l94 38 74 83 18 104-48 94-138 54-138-54-48-94 18-104 74-83z" fill="url(#gold)"/>
+ <path d="M512 202l66 28 58 65 14 81-39 75-99 39-99-39-39-75 14-81 58-65z" fill="#9e4b0a" stroke="#ffdf63"/>
+ <path d="M512 220l44 28v61h-88v-61z" fill="url(#gold)"/>
+ <path d="M482 253h60v38h-60z" fill="#713008"/>
+ <path d="M390 335l85-20-13 53-72 8z M634 335l-85-20 13 53 72 8z" fill="url(#gold)"/>
+ <path d="M512 330l-32 82h64z" fill="url(#gold)"/>
+ <path d="M430 422q82 45 164 0l-16 63q-66 35-132 0z" fill="url(#gold)"/>
+ <path d="M462 449h100v18H462z" fill="#713008" stroke="none"/>
+ <circle cx="365" cy="420" r="31" fill="url(#gold)"/><circle cx="659" cy="420" r="31" fill="url(#gold)"/>
+ <circle cx="365" cy="420" r="12" fill="#713008" stroke="none"/><circle cx="659" cy="420" r="12" fill="#713008" stroke="none"/>
+</g>
+<!-- stepped spiral details -->
+<g fill="none" stroke="url(#gold)" stroke-width="13" stroke-linecap="square" stroke-linejoin="miter">
+ <path d="M286 310h-48v48h34v-25h-14 M738 310h48v48h-34v-25h14 M286 462h-42v42h32v-22h-13 M738 462h42v42h-32v-22h13"/>
+</g>
+<!-- Wordmark -->
+<text x="512" y="744" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="190" font-weight="bold" letter-spacing="-7" fill="url(#gold)" stroke="#713008" stroke-width="8" paint-order="stroke fill" filter="url(#depth)">Plata</text>
+<text x="512" y="744" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="190" font-weight="bold" letter-spacing="-7" fill="none" stroke="#fff0a0" stroke-width="2" opacity=".8">Plata</text>
+<!-- ornamental baseline -->
+<g fill="none" stroke="url(#gold)" stroke-width="13" stroke-linejoin="round" filter="url(#depth)">
+ <path d="M176 815h250v36h-50v28h-54v-28H176 M848 815H598v36h50v28h54v-28h146"/>
+ <path d="M512 792l55 55-55 55-55-55z" fill="#713008"/><path d="M512 818l29 29-29 29-29-29z" fill="url(#gold)"/>
 </g>
 </svg>
