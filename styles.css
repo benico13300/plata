@@ -148,3 +148,8 @@ body:not(.app-locked) .auth-screen{display:none}
 .stats-active .dash-view,.stats-active .admin-view,.stats-active .recurring-view{display:none}
 .stats-active .stats-view{display:block}
 .stats-view .stats-panel{margin-bottom:0}
+
+/* Correctif : les boutons radio masqués des couleurs ne doivent pas élargir la fenêtre (barre de défilement horizontale) */
+.color-field .color-choice{position:relative}
+.color-field .color-choice input{position:absolute;left:0;top:0;width:1px;height:1px;padding:0;margin:0;opacity:0;pointer-events:none}
+.operation-dialog{overflow-x:hidden}
