@@ -45,6 +45,7 @@ function addMonths(dateString, count) {
 let state = loadState();
 let displayedMonth = new Date();
 displayedMonth.setDate(1);
+const typeFilter = new Set(); // types d'opération affichés (vide = tous) — vue temporaire
 let viewAccountId = ''; // compte cliqué dans « Vos comptes » (vue temporaire, non enregistrée)
 let editingOperationId = null; // opération en cours de modification (null = nouvelle opération)
 
@@ -123,7 +124,22 @@ function render() {
   const accounts = visibleAccounts();
   const monthOperations = visibleOperations().filter(operation => operation.date.startsWith(monthKey)).sort((a, b) => a.date.localeCompare(b.date));
   const filter = $('operation-filter').value || 'all';
-  const shown = monthOperations.filter(operation => filter === 'all' || operation.status === filter);
+  const byType = type => monthOperations.filter(operation => operation.type === type).length;
+  $('type-filters').innerHTML = Object.entries(TYPE_INFO).map(([type, info]) => {
+    const count = byType(type);
+    return `<button type="button" class="type-chip${typeFilter.has(type) ? ' is-active' : ''}${count === 0 ? ' is-empty' : ''}" data-type-filter="${type}" aria-pressed="${typeFilter.has(type)}">${info.icon} ${escapeHTML(info.label)} <span class="chip-count">${count}</span></button>`;
+  }).join('');
+  const shown = monthOperations.filter(operation => (filter === 'all' || operation.status === filter) && (typeFilter.size === 0 || typeFilter.has(operation.type)));
+  const filtering = typeFilter.size > 0 || filter !== 'all';
+  $('filter-summary').classList.toggle('hidden', !filtering);
+  if (filtering) {
+    // Total des opérations affichées : entrées − sorties ; les virements/épargne ne comptent que s'ils sont seuls.
+    const real = shown.filter(operation => !isInternal(operation));
+    const net = real.reduce((total, operation) => total + (operation.type === 'income' ? 1 : -1) * Number(operation.amount), 0);
+    const moved = shown.filter(isInternal).reduce((total, operation) => total + Number(operation.amount), 0);
+    const totalText = real.length ? `solde ${net > 0 ? '+' : ''}${money(net)}` : shown.length ? `${money(moved)} déplacés` : '';
+    $('filter-summary-text').textContent = `${shown.length} opération${shown.length > 1 ? 's' : ''} affichée${shown.length > 1 ? 's' : ''} sur ${monthOperations.length}${totalText ? ` · ${totalText}` : ''}`;
+  }
 
   const forecast = accounts.reduce((total, account) => total + accountBalance(account, monthEnd, true), 0);
   const actual = accounts.reduce((total, account) => total + accountBalance(account, monthEnd, false), 0);
@@ -158,6 +174,9 @@ function render() {
     const title = escapeHTML(operation.title);
     return `<article class="transaction-row"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" title="${operation.status === 'realized' ? 'Cliquer pour repasser en prévue' : 'Cliquer pour passer en réalisée'}" aria-label="${operation.status === 'realized' ? 'Réalisée, cliquer pour marquer comme prévue' : 'Prévue, cliquer pour marquer comme réalisée'}">${operation.status === 'realized' ? '✓ Réalisée' : '◷ Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
   }).join('');
+  const filteredOut = monthOperations.length > 0 && shown.length === 0;
+  $('empty-title').textContent = filteredOut ? 'Aucune opération ne correspond' : 'Rien à afficher pour le moment';
+  $('empty-text').textContent = filteredOut ? 'Modifiez ou effacez les filtres pour voir les autres opérations du mois.' : 'Ajoutez une opération pour commencer à suivre votre budget.';
   $('empty-state').hidden = shown.length > 0;
   $('transactions-list').hidden = shown.length === 0;
 
@@ -383,6 +402,16 @@ $('transactions-list').addEventListener('click', event => {
     deleteOperation(deleteButton.dataset.delete);
   }
 });
+
+// Filtre par type d'opération
+$('type-filters').addEventListener('click', event => {
+  const chip = event.target.closest('[data-type-filter]');
+  if (!chip) return;
+  const type = chip.dataset.typeFilter;
+  if (typeFilter.has(type)) typeFilter.delete(type); else typeFilter.add(type);
+  render();
+});
+$('clear-filters').addEventListener('click', () => { typeFilter.clear(); $('operation-filter').value = 'all'; render(); });
 
 // Vue sur un seul compte
 function pickAccount(id) { viewAccountId = id; render(); }
