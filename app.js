@@ -24,6 +24,7 @@ const TYPE_INFO = {
   transfer: { label: 'Virement', icon: '⇄', category: 'Virement' },
   savings: { label: 'Épargne', icon: '◈', category: 'Épargne' }
 };
+const COLOR_CLASSES = { red: 'row-red', yellow: 'row-yellow', blue: 'row-blue' }; // couleur de ligne choisie à la saisie
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
 const monthFormatter = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
@@ -258,6 +259,7 @@ function render() {
   const forecast = accounts.reduce((total, account) => total + accountBalance(account, monthEnd, true), 0);
   const actual = accounts.reduce((total, account) => total + accountBalance(account, monthEnd, false), 0);
   $('forecast-total').textContent = money(forecast);
+  $('forecast-total').closest('.summary-card').classList.toggle('is-negative', forecast < 0);
   $('actual-total').textContent = money(actual);
   $('accounts-total').textContent = money(actual);
 
@@ -286,7 +288,7 @@ function render() {
     const place = operation.place ? ` · 📍 ${operation.place}` : '';
     const id = escapeHTML(operation.id);
     const title = escapeHTML(operation.title);
-    return `<article class="transaction-row"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" title="${operation.status === 'realized' ? 'Cliquer pour repasser en prévue' : 'Cliquer pour passer en réalisée'}" aria-label="${operation.status === 'realized' ? 'Réalisée, cliquer pour marquer comme prévue' : 'Prévue, cliquer pour marquer comme réalisée'}">${operation.status === 'realized' ? '✓ Réalisée' : '◷ Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
+    return `<article class="transaction-row${COLOR_CLASSES[operation.color] ? ` ${COLOR_CLASSES[operation.color]}` : ''}"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" title="${operation.status === 'realized' ? 'Cliquer pour repasser en prévue' : 'Cliquer pour passer en réalisée'}" aria-label="${operation.status === 'realized' ? 'Réalisée, cliquer pour marquer comme prévue' : 'Prévue, cliquer pour marquer comme réalisée'}">${operation.status === 'realized' ? '✓ Réalisée' : '◷ Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
   }).join('');
   const filteredOut = monthOperations.length > 0 && shown.length === 0;
   $('empty-title').textContent = filteredOut ? 'Aucune opération ne correspond' : 'Rien à afficher pour le moment';
@@ -387,6 +389,8 @@ function openOperationDialog(operation) {
   if (!isInternal(operation)) $('operation-category').value = operation.category || '';
   $('operation-title').value = operation.title;
   $('operation-realized').checked = operation.status === 'realized';
+  const colorInput = document.querySelector(`input[name="operation-color"][value="${COLOR_CLASSES[operation.color] ? operation.color : ''}"]`);
+  if (colorInput) colorInput.checked = true;
   if (operation.place) {
     if (state.places.includes(operation.place)) { renderPlaceOptions(operation.place); }
     else { renderPlaceOptions(PLACE_OTHER); $('operation-place-other').value = operation.place; $('operation-place-save').checked = false; }
@@ -426,7 +430,8 @@ function submitOperation(event) {
     destinationAccountId: internal ? destinationId : null,
     category: internal ? TYPE_INFO[type].label : $('operation-category').value,
     place,
-    title: $('operation-title').value.trim()
+    title: $('operation-title').value.trim(),
+    color: (document.querySelector('input[name="operation-color"]:checked') || {}).value || ''
   };
   if (editing) {
     const following = $('operation-apply-series').checked ? followingInSeries(editing) : [];
@@ -788,372 +793,6 @@ $('export-json').addEventListener('click', exportJson);
 $('export-csv').addEventListener('click', exportCsv);
 $('import-json').addEventListener('click', () => $('import-file').click());
 $('import-file').addEventListener('change', event => { const file = event.target.files[0]; event.target.value = ''; if (file) importJson(file); });
-
-/* ---------- Effacer toutes les données ---------- */
-const CLEAR_WORD = 'EFFACER';
-function clearAllData() {
-  state.accounts = []; state.operations = []; state.categories = []; state.places = [];
-  state.adminDefaultAccountId = '';
-  viewAccountId = ''; typeFilter.clear();
-  sync.synced.settings = ''; // force la réécriture du document « réglages » (il doit rester, sinon l'application recrée des comptes de départ)
-  saveState(); render();
-}
-$('open-clear').addEventListener('click', () => { $('clear-form').reset(); $('clear-submit').disabled = true; $('clear-dialog').showModal(); });
-$('clear-confirm').addEventListener('input', () => { $('clear-submit').disabled = $('clear-confirm').value.trim().toUpperCase() !== CLEAR_WORD; });
-['close-clear', 'cancel-clear'].forEach(id => $(id).addEventListener('click', () => $('clear-dialog').close()));
-$('clear-form').addEventListener('submit', event => {
-  event.preventDefault();
-  if ($('clear-confirm').value.trim().toUpperCase() !== CLEAR_WORD) return;
-  clearAllData();
-  $('clear-dialog').close();
-  notify('Toutes les données ont été effacées.');
-});
-
-/* ---------- Import Excel (assistant, ligne par ligne) ----------
-   Le fichier est lu dans le navigateur (excel.bundle.js, chargé à la demande).
-   Chaque ligne devient une « ligne d'import » vérifiable, corrigeable et décochable avant d'écrire quoi que ce soit. */
-const EXCEL_TYPES = { VER: 'income', PRL: 'direct-debit', CB: 'card', RET: 'withdrawal', CHQ: 'check', EPA: 'savings' };
-const IMPORT_ACCOUNT_NAME = 'Caisse d’Epargne';
-// Catégories déduites du libellé (première règle qui correspond). Le dernier champ limite la règle aux entrées d'argent.
-const CATEGORY_RULES = [
-  [/REMB\.?\s?EMPR/, 'Crédits'],
-  [/SALAIRE/, 'Salaire'],
-  [/LOYER/, 'Revenus locatifs'],
-  [/REMB|REGUL|ERREUR/, 'Remboursement', true],
-  [/IMPOT|IMPÔT|ACOMPTE MENSUEL|DGFIP/, 'Impôts'],
-  [/CPAM|AG2R/, 'Santé'],
-  [/MATMUT|MACIF|APRIL|ASSURANCE/, 'Assurance'],
-  [/UBER ?EAT/, 'Restaurants'],
-  [/AIR ?FRANCE|VOL AF|PAYPAL AF\b|IBERIA|AVIANCA|HOTEL|HÔTEL|VALISE|SNCF/, 'Voyages'],
-  [/VINCI|PEAGE|PÉAGE|\bASF\b|NAVIGO|PARKING|INDIGO|QPARK|EFFIA|UBER|CARBURANT|ESSENCE|PNEU|LAVAGE AUTO|CONTR[ÔO]LE TECHNIQUE/, 'Transport'],
-  [/VETERINAIRE|VÉTÉRINAIRE/, 'Animaux'],
-  [/PHARMACIE|DENTISTE|^DOC |LABORATOIRE/, 'Santé'],
-  [/\bFREE\b|SOSH|SATELLIS|ICLOUD|CHATGPT|MICROSOFT|NORDVPN|MUSIC|IPTVX|LINKEDIN|PRIME|APPSTORE|APPLESTORE/, 'Abonnements'],
-  [/\bEDF\b|EAUX|CHARGE DOM|CHARGES FONCIA|VERISURE|WELDOM|JARDI|LAVERIE|NOTAIRE/, 'Logement'],
-  [/CHG CB|FRAIS BANCAIRES|CEPAC/, 'Frais bancaires'],
-  [/ACHAT ACTION|\bPEE\b/, 'Épargne et placements'],
-  [/BOURSO|REVOLUT|BRSM/, 'Virements perso'],
-  [/\bKDO\b|WERO|NATHY|MARIAGE|POT COMMUN|\bCLEM\b|CARLA|\bISA\b|DELPHINE|LIONEL|\bLIVA\b|\bDON\b/, 'Famille et cadeaux'],
-  [/INTERMARCH|LECLERC|GRAND FRAIS|CARREFOUR|BOULANGERIE|PAIN DE|^PAUL$|CHOCOLATERIE|MY ?BEER|INTERCAVES|BOISSON|BLACHERE|BLACHÈRE|NESPRESSO/, 'Alimentation'],
-  [/RESTO|PIZZA|CAF[ÉE]|^BAR |FIVE GUYS|SUSHI|PR[ÊE]T [ÀA] MANGER|STARBUCK|SPLENDIDO|PHENIX|COMPTOIR|AU FUT|BAHIA|YELLOW MONKEYS|PYRAME|FOODTRUCK/, 'Restaurants'],
-  [/CINEPLANET|FDJ|LOTO|FNAC|DECATHLON|INTERSPORT|SUMUP/, 'Loisirs']
-];
-function guessCategory(title, type) {
-  if (isInternal({ type })) return '';
-  const text = String(title || '').toLocaleUpperCase('fr').trim();
-  const found = CATEGORY_RULES.find(([pattern, , onlyIncome]) => (!onlyIncome || type === 'income') && pattern.test(text));
-  if (found) return found[1];
-  return type === 'income' ? 'Autres revenus' : 'Autres dépenses';
-}
-
-function plain(value) { return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase(); }
-function isoDate(year, month, day) {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? date.toISOString().slice(0, 10) : '';
-}
-// Date Excel (numéro de série, texte jj/mm/aaaa ou aaaa-mm-jj) → « AAAA-MM-JJ », ou '' si illisible.
-function excelDate(value) {
-  if (typeof value === 'number' && value > 20000 && value < 80000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000).toISOString().slice(0, 10);
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return isoDate(value.getFullYear(), value.getMonth() + 1, value.getDate());
-  const text = String(value ?? '').trim();
-  let match = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
-  if (match) return isoDate(Number(match[3]), Number(match[2]), Number(match[1]));
-  match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return match ? isoDate(Number(match[1]), Number(match[2]), Number(match[3])) : '';
-}
-// Montant Excel → nombre, null si vide, NaN si illisible.
-function excelAmount(value) {
-  if (value === null || value === undefined || String(value).trim() === '') return null;
-  if (typeof value === 'number') return value;
-  const number = Number(String(value).replace(/[\s€ ]/g, '').replace(',', '.'));
-  return Number.isFinite(number) ? number : NaN;
-}
-const round2 = value => Math.round(Number(value) * 100) / 100;
-
-// Lit un onglet : repère la ligne d'en-têtes (DATE, TYPE, MONTANT…) puis chaque opération. Retourne null si ce n'est pas un onglet d'opérations.
-function parseSheet(sheet, fileName) {
-  const rows = sheet.rows;
-  let header = -1; let cols = null;
-  for (let r = 0; r < Math.min(rows.length, 40) && header < 0; r += 1) {
-    const names = (rows[r] || []).map(plain);
-    const find = test => names.findIndex(name => name && test(name));
-    const candidate = { date: find(n => n === 'DATE'), type: find(n => n === 'TYPE'), title: find(n => /^(NATURE|LIBELLE)/.test(n)), place: find(n => /^LIEU/.test(n)), amount: find(n => /^MONTANT/.test(n)), mark: find(n => n === '<>' || n === '✓' || n === '✔' || /^POINT/.test(n)) };
-    if (candidate.date >= 0 && candidate.type >= 0 && candidate.amount >= 0) { header = r; cols = candidate; }
-  }
-  if (header < 0) return null;
-  let opening = null;
-  for (let r = 0; r < header; r += 1) {
-    const row = rows[r] || [];
-    if (/SOLDE PRECEDENT/.test(plain(row[0]))) { const value = row.slice(1).find(cell => typeof cell === 'number'); if (value !== undefined) opening = value; }
-  }
-  const lines = [];
-  for (let r = header + 1; r < rows.length; r += 1) {
-    const row = rows[r] || [];
-    const rawDate = row[cols.date]; const rawType = row[cols.type]; const rawAmount = row[cols.amount];
-    const empty = value => value === null || value === undefined || String(value).trim() === '';
-    if (empty(rawDate) && empty(rawType) && empty(rawAmount)) continue;
-    const code = plain(rawType);
-    lines.push({
-      file: fileName, sheet: sheet.name, row: r + 1,
-      mark: cols.mark >= 0 && !empty(row[cols.mark]),
-      date: excelDate(rawDate), rawDate: empty(rawDate) ? '' : String(rawDate),
-      code, type: EXCEL_TYPES[code] || '',
-      title: String(row[cols.title] ?? '').replace(/\s+/g, ' ').trim(),
-      place: cols.place >= 0 ? String(row[cols.place] ?? '').replace(/\s+/g, ' ').trim() : '',
-      amount: excelAmount(rawAmount)
-    });
-  }
-  return { name: sheet.name, lines, opening };
-}
-
-const importState = { lines: [], opening: null, files: [], skipped: [], filter: 'all', categoriesTouched: false };
-function loadExcelReader() {
-  if (window.PlataExcel) return Promise.resolve(window.PlataExcel);
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = './excel.bundle.js';
-    script.onload = () => (window.PlataExcel ? resolve(window.PlataExcel) : reject(new Error('Lecteur Excel indisponible.')));
-    script.onerror = () => reject(new Error('Le lecteur Excel n’a pas pu être chargé (connexion requise la première fois).'));
-    document.head.appendChild(script);
-  });
-}
-
-function importTargetAccountId() { const value = $('import-account').value; return value === '__new__' ? '' : value; }
-// Contrôle d'une ligne : erreurs (non importable) et points à vérifier. Recalculé après chaque correction.
-function checkImportLine(line, all) {
-  const issues = []; let level = 'ok';
-  const raise = (kind, text) => { issues.push(text); if (kind === 'error') level = 'error'; else if (level === 'ok') level = 'warn'; };
-  if (!line.date) raise('error', line.rawDate ? `Date illisible (« ${line.rawDate} »)` : 'Date manquante');
-  if (!line.type) raise('error', line.code ? `Type inconnu (« ${line.code} »)` : 'Type manquant');
-  if (Number.isNaN(line.amount)) raise('error', 'Montant illisible');
-  else if (line.amount === null) raise('warn', 'Montant vide');
-  else if (line.amount === 0) raise('warn', 'Montant à zéro');
-  else if (line.amount < 0) raise('warn', 'Montant négatif (le sens est donné par le type)');
-  if (!line.title) raise('warn', 'Libellé vide');
-  if (line.date && line.sheetMonth && line.date.slice(0, 7) !== line.sheetMonth) raise('warn', `Date hors du mois de l’onglet (${line.sheetMonth})`);
-  if (line.date && line.type && typeof line.amount === 'number' && !Number.isNaN(line.amount)) {
-    const key = `${line.date}|${line.type}|${plain(line.title)}|${round2(line.amount)}`;
-    if (all.get(key) !== line) raise('warn', 'Doublon probable dans l’import');
-    const accountId = importTargetAccountId();
-    if (accountId && state.operations.some(op => op.accountId === accountId && op.date === line.date && op.type === line.type && plain(op.title) === plain(line.title) && round2(op.amount) === round2(line.amount))) raise('warn', 'Existe déjà dans l’application');
-  }
-  if (line.type === 'savings' && !$('import-savings-account').value) issues.push('Épargne : destination à définir plus tard');
-  line.issues = issues; line.level = level;
-}
-function checkAllImportLines() {
-  const first = new Map();
-  importState.lines.forEach(line => {
-    if (line.date && line.type && typeof line.amount === 'number') { const key = `${line.date}|${line.type}|${plain(line.title)}|${round2(line.amount)}`; if (!first.has(key)) first.set(key, line); }
-  });
-  importState.lines.forEach(line => checkImportLine(line, first));
-}
-function importCategoryChoices() {
-  const names = [...state.categories];
-  importState.lines.forEach(line => { if (line.category && !names.some(name => sameName(name, line.category))) names.push(line.category); });
-  CATEGORY_RULES.forEach(([, name]) => { if (!names.some(item => sameName(item, name))) names.push(name); });
-  ['Autres revenus', 'Autres dépenses'].forEach(name => { if (!names.some(item => sameName(item, name))) names.push(name); });
-  return names;
-}
-function importRowHTML(line, index, categories) {
-  const internal = isInternal({ type: line.type });
-  const typeOptions = `<option value="">—</option>` + Object.entries(TYPE_INFO).filter(([type]) => type !== 'transfer').map(([type, info]) => `<option value="${type}"${line.type === type ? ' selected' : ''}>${escapeHTML(info.label)}</option>`).join('');
-  const categoryOptions = categories.map(name => `<option value="${escapeHTML(name)}"${line.category === name ? ' selected' : ''}>${escapeHTML(name)}</option>`).join('');
-  const amountValue = typeof line.amount === 'number' && !Number.isNaN(line.amount) ? line.amount : '';
-  return `<tr data-i="${index}" class="import-${line.level}"><td><input type="checkbox" data-f="checked" aria-label="Importer la ligne ${line.row} de ${escapeHTML(line.sheet)}"${line.checked ? ' checked' : ''}${line.level === 'error' ? ' disabled' : ''}></td>${importStatusCell(line)}<td><input type="date" data-f="date" value="${escapeHTML(line.date)}"></td><td><select data-f="type">${typeOptions}</select></td><td><input type="text" data-f="title" value="${escapeHTML(line.title)}"></td><td><input type="text" data-f="place" value="${escapeHTML(internal ? '' : line.place)}"${internal ? ' disabled' : ''}></td><td><select data-f="category"${internal ? ' disabled' : ''}><option value=""></option>${categoryOptions}</select></td><td><input type="number" step="0.01" data-f="amount" value="${amountValue}"></td><td><select data-f="status"><option value="realized"${line.status === 'realized' ? ' selected' : ''}>Réalisée</option><option value="planned"${line.status === 'planned' ? ' selected' : ''}>Prévue</option></select></td></tr>`;
-}
-function importStatusCell(line) {
-  const label = { ok: 'Valide', warn: 'À vérifier', error: 'Erreur' }[line.level];
-  const detail = line.issues.length ? `<span class="import-issue">${escapeHTML(line.issues.join(' · '))}</span>` : '';
-  return `<td class="import-status-cell"><span class="import-badge ${line.level}">${label}</span>${detail}<span class="import-origin">${escapeHTML(line.sheet)} · l.${line.row}</span></td>`;
-}
-function importVisible(line) {
-  const filter = importState.filter;
-  return filter === 'all' || (filter === 'unchecked' ? !line.checked : line.level === filter);
-}
-function renderImportRows() {
-  const categories = importCategoryChoices();
-  $('import-rows').innerHTML = importState.lines.map((line, index) => importVisible(line) ? importRowHTML(line, index, categories) : '').join('');
-  updateImportSummary();
-}
-function refreshImportRow(index) {
-  const line = importState.lines[index];
-  const row = $('import-rows').querySelector(`tr[data-i="${index}"]`);
-  if (!row) return;
-  row.className = `import-${line.level}`;
-  row.querySelector('.import-status-cell').outerHTML = importStatusCell(line);
-  const box = row.querySelector('[data-f="checked"]');
-  box.checked = line.checked; box.disabled = line.level === 'error';
-  const internal = isInternal({ type: line.type });
-  const place = row.querySelector('[data-f="place"]'); place.disabled = internal; if (internal) place.value = '';
-  const category = row.querySelector('[data-f="category"]'); category.disabled = internal;
-  if (!internal) { if (![...category.options].some(option => option.value === line.category)) category.add(new Option(line.category, line.category)); category.value = line.category; }
-}
-function updateImportSummary() {
-  const lines = importState.lines;
-  const count = level => lines.filter(line => line.level === level).length;
-  const selected = lines.filter(line => line.checked && line.level !== 'error');
-  const money2 = value => money(round2(value));
-  $('import-counters').innerHTML = `<span class="import-chip"><strong>${lines.length}</strong> lignes lues</span><span class="import-chip ok"><strong>${count('ok')}</strong> valides</span><span class="import-chip warn"><strong>${count('warn')}</strong> à vérifier</span><span class="import-chip error"><strong>${count('error')}</strong> en erreur</span><span class="import-chip"><strong>${selected.length}</strong> cochées</span>`;
-  const target = importTargetAccountId();
-  const existing = target ? state.accounts.find(account => account.id === target) : null;
-  const opening = existing ? Number(existing.balance || 0) : Number($('import-balance').value) || 0;
-  const effect = filterFn => selected.filter(filterFn).reduce((total, line) => total + (line.type === 'income' ? 1 : -1) * (Number(line.amount) || 0), 0);
-  const incomes = selected.filter(line => line.type === 'income').reduce((total, line) => total + (Number(line.amount) || 0), 0);
-  const outgoing = selected.filter(line => line.type !== 'income').reduce((total, line) => total + (Number(line.amount) || 0), 0);
-  const dates = selected.map(line => line.date).filter(Boolean).sort();
-  const newCategories = new Set(selected.filter(line => !isInternal({ type: line.type }) && line.category && !state.categories.some(name => sameName(name, line.category))).map(line => line.category));
-  const newPlaces = new Set(selected.filter(line => !isInternal({ type: line.type }) && line.place && !state.places.some(name => sameName(name, line.place))).map(line => plain(line.place)));
-  $('import-recap').innerHTML = `<h3>Récapitulatif avant import</h3><ul>
-    <li><strong>${selected.length}</strong> opérations seront importées${dates.length ? ` (du ${dateFormatter.format(new Date(`${dates[0]}T12:00:00`))} au ${dateFormatter.format(new Date(`${dates[dates.length - 1]}T12:00:00`))})` : ''}.</li>
-    <li>Entrées : <strong>${money2(incomes)}</strong> · Sorties : <strong>${money2(outgoing)}</strong></li>
-    <li>Solde initial : <strong>${money2(opening)}</strong> → solde réalisé après import : <strong>${money2(opening + effect(line => line.status === 'realized'))}</strong> · solde prévisionnel : <strong>${money2(opening + effect(() => true))}</strong></li>
-    <li>À créer : ${newCategories.size} catégorie(s), ${newPlaces.size} lieu(x)${target ? '' : `, le compte « ${escapeHTML(IMPORT_ACCOUNT_NAME)} »`}.</li></ul>`;
-  $('import-confirm').textContent = `Importer ${selected.length} opération${selected.length > 1 ? 's' : ''}`;
-  $('import-confirm').disabled = selected.length === 0;
-}
-
-function fillImportSettings() {
-  const existing = state.accounts.find(account => sameName(account.name, IMPORT_ACCOUNT_NAME));
-  $('import-account').innerHTML = `<option value="__new__">Créer « ${escapeHTML(IMPORT_ACCOUNT_NAME)} »</option>` + state.accounts.map(account => `<option value="${escapeHTML(account.id)}">${escapeHTML(account.name)}</option>`).join('');
-  $('import-account').value = existing ? existing.id : '__new__';
-  const balance = importState.opening === null ? 0 : round2(importState.opening);
-  $('import-balance').value = balance.toFixed(2);
-  updateImportAccountFields();
-}
-function updateImportAccountFields() {
-  const isNew = !importTargetAccountId();
-  $('import-balance-field').classList.toggle('hidden', !isNew);
-  const target = importTargetAccountId();
-  const others = state.accounts.filter(account => account.id !== target);
-  const keep = $('import-savings-account').value;
-  $('import-savings-account').innerHTML = `<option value="">— À définir plus tard —</option>` + others.map(account => `<option value="${escapeHTML(account.id)}">${escapeHTML(account.name)}</option>`).join('');
-  $('import-savings-account').value = others.some(account => account.id === keep) ? keep : '';
-  $('import-savings-field').classList.toggle('hidden', !importState.lines.some(line => line.type === 'savings'));
-}
-
-async function readImportFiles(files) {
-  const status = $('import-file-status');
-  status.textContent = 'Lecture en cours…';
-  try {
-    const reader = await loadExcelReader();
-    const lines = []; const names = []; const skipped = []; const openings = [];
-    for (const file of files) {
-      const sheets = reader.read(await file.arrayBuffer());
-      sheets.forEach(sheet => {
-        const parsed = parseSheet(sheet, file.name);
-        if (!parsed) { skipped.push(`${file.name} › ${sheet.name}`); return; }
-        if (parsed.lines.length) {
-          lines.push(...parsed.lines);
-          if (parsed.opening !== null) openings.push({ value: parsed.opening, date: parsed.lines.map(line => line.date).filter(Boolean).sort()[0] || '9999' });
-        }
-      });
-      names.push(file.name);
-    }
-    if (!lines.length) { status.textContent = 'Aucune opération reconnue : il faut des colonnes DATE, TYPE et MONTANT dans l’en-tête d’un onglet.'; return; }
-    lines.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999') || a.sheet.localeCompare(b.sheet) || a.row - b.row);
-    openings.sort((a, b) => a.date.localeCompare(b.date));
-    const monthCount = new Map(); // mois dominant de chaque onglet : une ligne datée d'un autre mois est signalée
-    lines.forEach(line => { if (line.date) { const key = `${line.file}|${line.sheet}`; const counts = monthCount.get(key) || new Map(); counts.set(line.date.slice(0, 7), (counts.get(line.date.slice(0, 7)) || 0) + 1); monthCount.set(key, counts); } });
-    lines.forEach(line => { const counts = monthCount.get(`${line.file}|${line.sheet}`); if (counts) line.sheetMonth = [...counts.entries()].sort((x, y) => y[1] - x[1])[0][0]; });
-    lines.forEach(line => {
-      line.status = line.mark ? 'realized' : 'planned';
-      line.category = guessCategory(line.title, line.type);
-    });
-    Object.assign(importState, { lines, opening: openings.length ? openings[0].value : null, files: names, skipped, filter: 'all' });
-    $('import-filter').value = 'all';
-    fillImportSettings();
-    checkAllImportLines();
-    lines.forEach(line => { line.checked = line.level === 'ok'; });
-    $('import-sources').textContent = `${names.join(' · ')} — ${lines.length} lignes lues` + (importState.opening !== null ? ` · solde précédent lu : ${money(round2(importState.opening))}` : '') + (skipped.length ? ` · onglets ignorés (pas d’opérations) : ${skipped.length}` : '');
-    $('import-step-file').classList.add('hidden');
-    $('import-step-review').classList.remove('hidden');
-    renderImportRows();
-  } catch (error) {
-    console.error(error);
-    status.textContent = `Lecture impossible : ${error.message || error}`;
-  }
-}
-function showImportDialog() {
-  $('import-step-file').classList.remove('hidden');
-  $('import-step-review').classList.add('hidden');
-  $('import-file-status').textContent = '';
-  $('import-dialog').showModal();
-}
-function applyImportEdit(line, field, target) {
-  if (field === 'checked') { line.checked = target.checked; return; }
-  if (field === 'date') { line.date = target.value; line.rawDate = ''; }
-  else if (field === 'type') {
-    line.type = target.value;
-    if (!line.categoryEdited) line.category = guessCategory(line.title, line.type);
-  } else if (field === 'title') { line.title = target.value; if (!line.categoryEdited) line.category = guessCategory(line.title, line.type); }
-  else if (field === 'place') line.place = target.value.trim();
-  else if (field === 'category') { line.category = target.value; line.categoryEdited = true; }
-  else if (field === 'amount') line.amount = target.value === '' ? null : Number(target.value);
-  else if (field === 'status') line.status = target.value;
-  if (!['checked', 'status', 'category', 'place'].includes(field)) {
-    const before = line.level;
-    checkAllImportLines();
-    if (line.level === 'error') line.checked = false;
-    else if (line.level === 'ok' && before !== 'ok') line.checked = true;
-  }
-}
-function onImportEdit(event) {
-  const target = event.target; const field = target.dataset.f;
-  const row = target.closest('tr[data-i]');
-  if (!field || !row) return;
-  const index = Number(row.dataset.i);
-  applyImportEdit(importState.lines[index], field, target);
-  if (field === 'type') updateImportAccountFields();
-  importState.lines.forEach((line, i) => refreshImportRow(i)); // un doublon ou une erreur peut changer l'état d'autres lignes
-  updateImportSummary();
-}
-function confirmImport() {
-  const selected = importState.lines.filter(line => line.checked && line.level !== 'error');
-  if (!selected.length) return;
-  const targetId = importTargetAccountId();
-  const dates = selected.map(line => line.date).sort();
-  if (!confirm(`Importer ${selected.length} opération(s) du ${dates[0]} au ${dates[dates.length - 1]} ?\n\n${targetId ? 'Elles seront ajoutées au compte existant.' : `Le compte « ${IMPORT_ACCOUNT_NAME} » sera créé (solde initial : ${money(round2(Number($('import-balance').value) || 0))}).`}`)) return;
-  let accountId = targetId;
-  if (!accountId) {
-    accountId = makeId();
-    state.accounts.push({ id: accountId, name: IMPORT_ACCOUNT_NAME, kind: 'Compte courant', icon: ACCOUNT_ICONS['Compte courant'], balance: round2(Number($('import-balance').value) || 0) });
-  }
-  const savingsDestination = $('import-savings-account').value || null;
-  selected.forEach(line => {
-    const internal = isInternal({ type: line.type });
-    let category = line.category; let place = line.place;
-    if (!internal) {
-      const knownCategory = state.categories.find(name => sameName(name, category));
-      if (knownCategory) category = knownCategory; else if (category) state.categories.push(category);
-      const knownPlace = state.places.find(name => sameName(name, place));
-      if (knownPlace) place = knownPlace; else if (place) state.places.push(place);
-    }
-    state.operations.push({
-      id: makeId(), type: line.type, amount: round2(line.amount || 0), accountId,
-      destinationAccountId: internal ? savingsDestination : null,
-      category: internal ? TYPE_INFO[line.type].label : category, place: internal ? '' : place,
-      title: line.title, date: line.date, status: line.status, seriesId: null
-    });
-  });
-  saveState(); render();
-  $('import-dialog').close();
-  setAdminView(false);
-  history.replaceState(null, '', location.pathname + location.search);
-  notify(`${selected.length} opération(s) importée(s) dans « ${accountName(accountId)} ».`);
-}
-$('open-import').addEventListener('click', showImportDialog);
-$('close-import').addEventListener('click', () => $('import-dialog').close());
-$('import-pick').addEventListener('click', () => $('import-excel-file').click());
-$('import-excel-file').addEventListener('change', event => { const files = [...event.target.files]; event.target.value = ''; if (files.length) readImportFiles(files); });
-$('import-back').addEventListener('click', showImportDialog);
-$('import-rows').addEventListener('change', onImportEdit);
-$('import-filter').addEventListener('change', () => { importState.filter = $('import-filter').value; renderImportRows(); });
-$('import-check-valid').addEventListener('click', () => { importState.lines.forEach(line => { if (line.level === 'ok') line.checked = true; }); renderImportRows(); });
-$('import-uncheck-all').addEventListener('click', () => { importState.lines.forEach(line => { line.checked = false; }); renderImportRows(); });
-$('import-account').addEventListener('change', () => { updateImportAccountFields(); checkAllImportLines(); renderImportRows(); });
-$('import-balance').addEventListener('input', updateImportSummary);
-$('import-savings-account').addEventListener('change', () => { checkAllImportLines(); renderImportRows(); });
-$('import-confirm').addEventListener('click', confirmImport);
 
 /* ---------- Démarrage ---------- */
 setAdminView(location.hash === '#admin');
