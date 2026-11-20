@@ -10,7 +10,16 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
+<body class="app-locked">
+  <div class="auth-screen" id="auth-screen">
+    <div class="auth-card">
+      <img class="auth-logo" src="./logo.svg" alt="Plata" width="132" height="132">
+      <p class="eyebrow">VOTRE ARGENT, EN UN COUP D’ŒIL</p>
+      <p id="auth-message" class="auth-message">Chargement…</p>
+      <button class="button button-primary hidden" id="sign-in" type="button">Se connecter avec Google</button>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div class="app-shell">
     <aside class="sidebar" aria-label="Navigation principale">
       <a class="brand" href="./" aria-label="Plata, accueil" title="Plata"><img class="brand-emblem" src="./logo.svg" alt="" width="72" height="72"></a>
@@ -19,10 +28,11 @@
       <a class="nav-link" href="#operations" title="Opérations" aria-label="Opérations"><span class="nav-icon" aria-hidden="true">↕</span><span class="nav-label">Opérations</span></a>
       <a class="nav-link" href="#accounts" title="Mes comptes" aria-label="Mes comptes"><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Mes comptes</span></a>
       <a class="nav-link" id="admin-nav-link" href="#admin" title="Administration" aria-label="Administration"><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Administration</span></a>
-      <div class="sidebar-bottom"><span class="local-dot"></span> Version locale<br><small>Les données restent sur cet appareil.</small></div>
+      <div class="sidebar-bottom"><span class="sync-line" id="sync-status" data-level="off"><span class="sync-dot"></span><span class="sync-text">Non connecté</span></span><br><small>Données synchronisées avec votre compte Google.</small></div>
     </aside>
 
     <main class="main-content" id="dashboard">
+      <div class="offline-banner hidden" id="offline-banner" role="status"></div>
       <div class="dash-view">
         <header class="topbar"><div><p class="eyebrow">VOTRE ARGENT, EN UN COUP D’ŒIL</p><h1>Tableau de bord</h1></div><button class="button button-primary top-add" id="open-operation" type="button"><span aria-hidden="true">＋</span> Nouvelle opération</button></header>
         <section class="month-toolbar" aria-label="Choisir le mois"><div class="month-controls"><button class="icon-button" id="previous-month" type="button" aria-label="Mois précédent">‹</button><h2 id="month-label"></h2><button class="icon-button" id="next-month" type="button" aria-label="Mois suivant">›</button></div><button class="text-button" id="current-month" type="button">Aujourd’hui</button></section>
@@ -64,10 +74,18 @@
             <form id="admin-place-form" class="admin-form"><label class="field">Nouveau lieu<input id="admin-place-name" type="text" maxlength="60" placeholder="Ex. Carrefour, Pharmacie du centre…" required></label><button class="button button-primary" type="submit">Ajouter le lieu</button></form>
             <ul id="admin-place-list" class="admin-list"></ul>
           </section>
+          <section class="admin-card">
+            <p class="eyebrow">COMPTE ET SAUVEGARDE</p><h2>Synchronisation et sauvegarde</h2>
+            <p>Connecté en tant que <strong id="admin-user">—</strong></p>
+            <p><span class="sync-line" id="admin-sync-status" data-level="off"><span class="sync-dot"></span><span class="sync-text">Non connecté</span></span></p>
+            <p class="admin-note">Exportez régulièrement une sauvegarde : le fichier JSON contient tout (comptes, opérations, catégories, lieux) et peut être restauré ici. Le CSV s’ouvre dans Excel.</p>
+            <div class="dialog-actions admin-actions"><button class="button button-primary" id="export-json" type="button">Exporter la sauvegarde (JSON)</button><button class="button button-secondary" id="export-csv" type="button">Exporter les opérations (CSV)</button><button class="button button-secondary" id="import-json" type="button">Restaurer une sauvegarde…</button><button class="button button-secondary" id="sign-out" type="button">Se déconnecter</button></div>
+            <input type="file" id="import-file" accept="application/json,.json" hidden>
+          </section>
         </div>
       </section>
 
-      <footer class="page-footer">Plata <span>·</span> Première version — données enregistrées dans ce navigateur</footer>
+      <footer class="page-footer">Plata <span>·</span> <span class="sync-line" id="sync-status-footer" data-level="off"><span class="sync-dot"></span><span class="sync-text">Non connecté</span></span></footer>
     </main>
   </div>
 
@@ -82,6 +100,7 @@
 
   <dialog id="edit-account-dialog" class="operation-dialog compact-dialog"><form id="edit-account-form" method="dialog"><input id="edit-account-id" type="hidden"><div class="dialog-heading"><div><p class="eyebrow">VOS COMPTES</p><h2>Modifier le compte</h2></div><button class="icon-button close-button" type="button" id="close-edit-account" aria-label="Fermer">×</button></div><div class="form-grid"><label class="field field-wide">Nom du compte<input id="edit-account-name" type="text" maxlength="50" required></label><label class="field field-wide">Type<select id="edit-account-kind"><option value="Compte courant">Compte courant</option><option value="Épargne">Épargne</option><option value="Autre compte">Autre compte</option></select></label></div><div class="dialog-actions"><button class="button button-secondary" type="button" id="cancel-edit-account">Annuler</button><button class="button button-primary" type="submit">Enregistrer</button></div></form></dialog>
 
+  <script src="./cloud.bundle.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>

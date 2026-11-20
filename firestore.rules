@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Chaque donnée vit sous users/<identifiant Firebase de l'utilisateur>/...
+    // Seul le compte Google autorisé, lui-même, peut lire et écrire. Tout le reste est refusé.
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == uid
+        && request.auth.token.email == "benico13300@gmail.com"
+        && request.auth.token.email_verified == true;
+    }
+  }
+}
