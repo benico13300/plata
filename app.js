@@ -6,7 +6,9 @@
    ========================================================================== */
 
 /* ---------- Constantes ---------- */
-const STORAGE_KEY = 'plata.local.v1';
+const LEGACY_KEY = 'plata.local.v1';   // anciennes données (avant Firebase), lues une seule fois pour l'import
+const PREFS_KEY = 'plata.prefs.v1';    // préférences d'affichage propres à chaque appareil
+const IS_WINDOWS = /Windows/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.userAgent);
 const ACCOUNT_SEEDS = [
   { id: 'checking', name: 'Compte courant', kind: 'Compte courant', icon: '▤', balance: 0 },
   { id: 'savings', name: 'Livret épargne', kind: 'Épargne', icon: '◈', balance: 0 }
@@ -42,14 +44,19 @@ function addMonths(dateString, count) {
 }
 
 /* ---------- Données ---------- */
-let state = loadState();
+const cloud = window.PlataCloud;
+function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (error) { return {}; } }
+function emptyState() {
+  return { accounts: [], operations: [], categories: [...DEFAULT_CATEGORIES], places: [], adminDefaultAccountId: loadPrefs().adminDefaultAccountId || '' };
+}
+let state = emptyState();
 let displayedMonth = new Date();
 displayedMonth.setDate(1);
 const typeFilter = new Set(); // types d'opération affichés (vide = tous) — vue temporaire
 let viewAccountId = ''; // compte cliqué dans « Vos comptes » (vue temporaire, non enregistrée)
 let editingOperationId = null; // opération en cours de modification (null = nouvelle opération)
 
-// Remet les données lues dans le navigateur au bon format (et reprend l'ancien format).
+// Remet des données (ancien stockage local, sauvegarde importée) au bon format.
 function normalizeState(stored) {
   const data = {
     accounts: stored.accounts.map(account => ({ ...account })),
@@ -72,14 +79,120 @@ function normalizeState(stored) {
   });
   return data;
 }
-function loadState() {
+function readLegacyLocal() {
   try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (stored && Array.isArray(stored.accounts) && Array.isArray(stored.operations)) return normalizeState(stored);
-  } catch (error) { console.warn('Impossible de lire les données locales.', error); }
-  return { accounts: ACCOUNT_SEEDS.map(account => ({ ...account })), operations: [], categories: [...DEFAULT_CATEGORIES], places: [], adminDefaultAccountId: '' };
+    const stored = JSON.parse(localStorage.getItem(LEGACY_KEY));
+    if (stored && Array.isArray(stored.accounts) && Array.isArray(stored.operations) && (stored.operations.length || stored.accounts.some(account => Number(account.balance)))) return normalizeState(stored);
+  } catch (error) { console.warn('Impossible de lire les anciennes données locales.', error); }
+  return null;
 }
-function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+/* ---------- Synchronisation cloud (Firestore) ----------
+   Chaque compte et chaque opération est un document ; les catégories et lieux sont dans un document « réglages ».
+   state reste la référence pour l'affichage ; saveState() envoie uniquement ce qui a changé. */
+const sync = { user: null, stop: null, loaded: {}, meta: {}, initDone: false, ready: false, error: '', synced: null };
+function freshSynced() { return { accounts: new Map(), operations: new Map(), settings: '' }; }
+sync.synced = freshSynced();
+
+function stable(value) { // JSON à clés triées, pour comparer deux documents
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') return `{${Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`;
+  return JSON.stringify(value === undefined ? null : value);
+}
+function clean(object) { return JSON.parse(JSON.stringify(object)); } // retire les undefined (refusés par Firestore)
+function accountDoc(account, index) { const { id, ...rest } = account; return clean({ ...rest, order: index }); }
+function operationDoc(operation) { const { id, ...rest } = operation; return clean(rest); }
+function settingsDoc() { return { categories: [...state.categories], places: [...state.places], schemaVersion: 1 }; }
+
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify({ adminDefaultAccountId: state.adminDefaultAccountId || '' })); } catch (error) { /* stockage plein ou refusé */ } }
+function saveState() {
+  savePrefs();
+  if (!sync.user || !sync.ready) return;
+  const changes = [];
+  const nextAccounts = new Map(state.accounts.map((account, index) => [account.id, accountDoc(account, index)]));
+  const nextOperations = new Map(state.operations.map(operation => [operation.id, operationDoc(operation)]));
+  const next = { accounts: new Map(), operations: new Map(), settings: stable(settingsDoc()) };
+  [['accounts', nextAccounts], ['operations', nextOperations]].forEach(([kind, docs]) => {
+    docs.forEach((data, id) => {
+      const json = stable(data);
+      next[kind].set(id, json);
+      if (sync.synced[kind].get(id) !== json) changes.push({ op: 'set', kind, id, data });
+    });
+    sync.synced[kind].forEach((json, id) => { if (!docs.has(id)) changes.push({ op: 'delete', kind, id }); });
+  });
+  if (sync.synced.settings !== next.settings) changes.push({ op: 'set', kind: 'settings', id: 'main', data: settingsDoc() });
+  sync.synced = next;
+  if (!changes.length) return;
+  cloud.commit(changes).catch(error => { console.error('Écriture cloud refusée.', error); sync.error = 'write'; updateSyncStatus(); });
+  updateSyncStatus();
+}
+
+function applyCloudChanges(kind, changes, meta) {
+  sync.loaded[kind] = true;
+  sync.meta[kind] = meta;
+  let changed = false;
+  changes.forEach(change => {
+    if (kind === 'settings') {
+      if (change.pending) return;
+      state.categories = Array.isArray(change.data.categories) ? change.data.categories : state.categories;
+      state.places = Array.isArray(change.data.places) ? change.data.places : state.places;
+      sync.synced.settings = stable(settingsDoc());
+      changed = true;
+      return;
+    }
+    const list = state[kind];
+    const index = list.findIndex(item => item.id === change.id);
+    if (change.type === 'removed') {
+      if (index >= 0) { list.splice(index, 1); changed = true; }
+      sync.synced[kind].delete(change.id);
+      return;
+    }
+    if (change.pending) return; // écriture locale en cours : l'écran la contient déjà
+    const item = { id: change.id, ...change.data };
+    if (index >= 0) list[index] = item; else list.push(item);
+    sync.synced[kind].set(change.id, stable(change.data));
+    changed = true;
+  });
+  if (changed && kind === 'accounts') state.accounts.sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9));
+  const allLoaded = ['accounts', 'operations', 'settings'].every(name => sync.loaded[name]);
+  if (allLoaded && !sync.initDone && ['accounts', 'operations', 'settings'].every(name => sync.meta[name] && !sync.meta[name].fromCache)) {
+    sync.initDone = true;
+    if (sync.meta.settings.empty && sync.meta.accounts.empty && sync.meta.operations.empty) { seedCloud(); changed = true; }
+  }
+  // L'écran n'apparaît qu'une fois le serveur consulté, ou si le cache de l'appareil contient déjà des données.
+  const wasReady = sync.ready;
+  sync.ready = allLoaded && (sync.initDone || state.accounts.length > 0);
+  if (sync.ready && (changed || !wasReady)) { unlockApp(); render(); }
+  updateSyncStatus();
+}
+
+// Cloud vide : on y importe les données locales de cet appareil (une seule fois), sinon des comptes de départ.
+function seedCloud() {
+  const legacy = localStorage.getItem('plata.migrated') ? null : readLegacyLocal();
+  if (legacy) {
+    state.accounts = legacy.accounts; state.operations = legacy.operations; state.categories = legacy.categories; state.places = legacy.places;
+    if (legacy.adminDefaultAccountId && !state.adminDefaultAccountId) state.adminDefaultAccountId = legacy.adminDefaultAccountId;
+    try { localStorage.setItem('plata.migrated', new Date().toISOString()); } catch (error) { /* ignoré */ }
+    notify(`Vos données locales ont été importées dans le cloud (${legacy.accounts.length} compte${legacy.accounts.length > 1 ? 's' : ''}, ${legacy.operations.length} opération${legacy.operations.length > 1 ? 's' : ''}).`);
+  } else {
+    state.accounts = ACCOUNT_SEEDS.map(account => ({ ...account }));
+    state.operations = []; state.categories = [...DEFAULT_CATEGORIES]; state.places = [];
+  }
+  sync.ready = true; // saveState() a besoin de ce drapeau pour partir
+  saveState();
+}
+
+function startSync() {
+  stopSync();
+  sync.stop = cloud.subscribe({
+    onChanges: applyCloudChanges,
+    onError: error => { console.error('Synchronisation interrompue.', error); sync.error = error.code || 'sync'; updateSyncStatus(); showAuth(sync.error === 'permission-denied' ? 'Accès refusé par les règles de sécurité Firestore. Vérifiez qu’elles sont bien publiées.' : 'Erreur de synchronisation. Rechargez la page.'); }
+  });
+}
+function stopSync() {
+  if (sync.stop) sync.stop();
+  Object.assign(sync, { stop: null, loaded: {}, meta: {}, initDone: false, ready: false, error: '', synced: freshSynced() });
+}
 
 /* ---------- Règles de calcul ---------- */
 function isInternal(operation) { return operation.type === 'transfer' || operation.type === 'savings'; }
@@ -183,10 +296,12 @@ function render() {
   // Listes de comptes du formulaire : le compte source suit l'affichage choisi ;
   // le compte destinataire d'un virement propose toujours tous les comptes.
   const optionsFor = list => list.map(account => `<option value="${escapeHTML(account.id)}">${escapeHTML(account.name)}</option>`).join('');
-  $('source-account').innerHTML = optionsFor(accounts);
-  $('destination-account').innerHTML = optionsFor(state.accounts);
-  renderCategories();
-  renderPlaceOptions();
+  if (!$('operation-dialog').open) { // un formulaire en cours de saisie n'est pas réinitialisé par une synchronisation
+    $('source-account').innerHTML = optionsFor(accounts);
+    $('destination-account').innerHTML = optionsFor(state.accounts);
+    renderCategories();
+    renderPlaceOptions();
+  }
   renderAdmin();
 }
 
@@ -542,13 +657,146 @@ function createListAdmin(cfg) {
 const categoriesAdmin = createListAdmin({ stateKey: 'categories', opKey: 'category', listId: 'admin-category-list', formId: 'admin-category-form', inputId: 'admin-category-name', exists: 'Cette catégorie existe déjà.', confirmDelete: name => `Supprimer la catégorie « ${name} » de la liste ? Les opérations existantes seront conservées.` });
 const placesAdmin = createListAdmin({ stateKey: 'places', opKey: 'place', listId: 'admin-place-list', formId: 'admin-place-form', inputId: 'admin-place-name', exists: 'Ce lieu existe déjà.', confirmDelete: name => `Supprimer le lieu « ${name} » de la liste ? Les opérations existantes seront conservées.` });
 
-// Synchronisation entre onglets
-window.addEventListener('storage', event => { if (event.key === STORAGE_KEY) { state = loadState(); render(); } });
 
-// Mode hors ligne (service worker)
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Service worker non enregistré.', error)));
+/* ---------- Connexion, statut de synchronisation, sauvegarde ---------- */
+function showAuth(message, { canSignIn = false } = {}) {
+  document.body.classList.add('app-locked');
+  $('auth-message').textContent = message;
+  $('sign-in').classList.toggle('hidden', !canSignIn);
+  $('sign-in').disabled = false;
 }
+function unlockApp() { document.body.classList.remove('app-locked'); }
+let toastTimer = null;
+function notify(text) {
+  const toast = $('toast');
+  toast.textContent = text;
+  toast.classList.add('is-visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('is-visible'), 9000);
+}
+function syncStatus() {
+  if (!sync.user) return { level: 'off', text: 'Non connecté' };
+  if (sync.error) return { level: 'error', text: 'Erreur de synchronisation' };
+  const pending = Object.values(sync.meta).some(meta => meta && meta.pending);
+  if (!navigator.onLine) return { level: 'offline', text: IS_WINDOWS ? (pending ? 'Hors ligne · modifications en attente' : 'Hors ligne · données de cet appareil') : 'Hors ligne' };
+  if (pending) return { level: 'saving', text: 'Synchronisation…' };
+  return { level: 'ok', text: 'Synchronisé' };
+}
+function updateSyncStatus() {
+  const status = syncStatus();
+  ['sync-status', 'sync-status-footer', 'admin-sync-status'].forEach(id => {
+    const element = $(id);
+    if (!element) return;
+    element.dataset.level = status.level;
+    element.querySelector('.sync-text').textContent = status.text;
+  });
+  $('admin-user').textContent = sync.user ? sync.user.email : '—';
+  const offline = sync.user && !navigator.onLine;
+  $('offline-banner').classList.toggle('hidden', !offline);
+  $('offline-banner').textContent = IS_WINDOWS
+    ? 'Mode hors ligne : vous pouvez consulter et saisir. Vos modifications seront synchronisées au retour du réseau.'
+    : 'Hors ligne : sur téléphone, Plata nécessite une connexion. Ne fermez pas l’application, vos modifications seraient perdues.';
+  if (sync.user && !sync.ready && !sync.error) {
+    showAuth(navigator.onLine ? 'Synchronisation en cours…' : (IS_WINDOWS ? 'Hors ligne et aucune donnée sur cet appareil : connectez-vous une première fois au réseau.' : 'Une connexion Internet est nécessaire sur téléphone.'));
+  }
+}
+window.addEventListener('online', updateSyncStatus);
+window.addEventListener('offline', updateSyncStatus);
+window.addEventListener('beforeunload', event => {
+  // Sur téléphone, rien n'est conservé localement : on prévient si des modifications n'ont pas encore atteint le cloud.
+  if (!IS_WINDOWS && Object.values(sync.meta).some(meta => meta && meta.pending)) { event.preventDefault(); event.returnValue = ''; }
+});
 
-render();
+const AUTH_MESSAGES = {
+  unauthorized: 'Ce compte Google n’est pas autorisé à accéder à Plata.',
+  'auth/popup-closed-by-user': 'Connexion annulée.',
+  'auth/cancelled-popup-request': 'Connexion annulée.',
+  'auth/network-request-failed': 'Pas de connexion réseau : réessayez une fois en ligne.',
+  'auth/unauthorized-domain': 'Ce site n’est pas dans les « domaines autorisés » de Firebase Authentication.'
+};
+function onAuthChange(user, error) {
+  if (!user) {
+    stopSync();
+    sync.user = null;
+    state = emptyState();
+    showAuth(error ? (AUTH_MESSAGES[error] || `Connexion impossible (${error}).`) : 'Connectez-vous avec votre compte Google pour accéder à vos comptes.', { canSignIn: true });
+    updateSyncStatus();
+    return;
+  }
+  sync.user = user;
+  showAuth('Synchronisation en cours…');
+  startSync();
+  updateSyncStatus();
+}
+$('sign-in').addEventListener('click', async () => {
+  $('sign-in').disabled = true;
+  try { await cloud.signIn(); } catch (error) { showAuth(AUTH_MESSAGES[error.code] || `Connexion impossible (${error.code || error.message}).`, { canSignIn: true }); }
+});
+$('sign-out').addEventListener('click', () => {
+  if (confirm('Se déconnecter de Plata ?')) cloud.signOut();
+});
+
+// Sauvegardes : export JSON (complet) et CSV (opérations), import JSON (restauration).
+function download(filename, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+const todayStamp = () => new Date().toISOString().slice(0, 10);
+function exportJson() {
+  const data = {
+    application: 'Plata', format: 1, exportedAt: new Date().toISOString(),
+    accounts: state.accounts.map(({ order, ...account }) => account),
+    operations: state.operations, categories: state.categories, places: state.places
+  };
+  download(`plata-sauvegarde-${todayStamp()}.json`, JSON.stringify(data, null, 2), 'application/json');
+  notify(`Sauvegarde exportée : ${state.accounts.length} compte(s), ${state.operations.length} opération(s).`);
+}
+function exportCsv() {
+  const cell = value => { const text = String(value ?? ''); return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text; };
+  const header = ['Date', 'Type', 'Libellé', 'Montant', 'Sens', 'Compte', 'Compte destinataire', 'Catégorie', 'Lieu', 'Statut'];
+  const rows = [...state.operations].sort((a, b) => a.date.localeCompare(b.date)).map(operation => [
+    operation.date, (TYPE_INFO[operation.type] || TYPE_INFO.card).label, operation.title,
+    Number(operation.amount).toFixed(2).replace('.', ','),
+    operation.type === 'income' ? 'Entrée' : isInternal(operation) ? 'Mouvement interne' : 'Sortie',
+    accountName(operation.accountId), isInternal(operation) ? accountName(operation.destinationAccountId) : '',
+    isInternal(operation) ? '' : operation.category || '', operation.place || '',
+    operation.status === 'realized' ? 'Réalisée' : 'Prévue'
+  ]);
+  // BOM + séparateur « ; » : s'ouvre directement dans Excel en français.
+  download(`plata-operations-${todayStamp()}.csv`, '﻿' + [header, ...rows].map(row => row.map(cell).join(';')).join('\r\n'), 'text/csv;charset=utf-8');
+  notify(`${rows.length} opération(s) exportée(s) en CSV.`);
+}
+async function importJson(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (error) { alert('Ce fichier n’est pas une sauvegarde Plata valide (JSON illisible).'); return; }
+  const valid = data && Array.isArray(data.accounts) && Array.isArray(data.operations)
+    && data.accounts.every(account => account && account.id && account.name)
+    && data.operations.every(operation => operation && operation.id && operation.type && operation.date && operation.accountId && Number.isFinite(Number(operation.amount)));
+  if (!valid) { alert('Ce fichier n’est pas une sauvegarde Plata valide.'); return; }
+  const incoming = normalizeState(data);
+  if (!confirm(`Restaurer cette sauvegarde ?\n\nElle REMPLACE toutes les données actuelles (${state.accounts.length} compte(s), ${state.operations.length} opération(s)) par ${incoming.accounts.length} compte(s) et ${incoming.operations.length} opération(s).\n\nPensez à exporter une sauvegarde de l’état actuel avant.`)) return;
+  state.accounts = incoming.accounts; state.operations = incoming.operations; state.categories = incoming.categories; state.places = incoming.places;
+  viewAccountId = '';
+  saveState(); render();
+  notify('Sauvegarde restaurée.');
+}
+$('export-json').addEventListener('click', exportJson);
+$('export-csv').addEventListener('click', exportCsv);
+$('import-json').addEventListener('click', () => $('import-file').click());
+$('import-file').addEventListener('change', event => { const file = event.target.files[0]; event.target.value = ''; if (file) importJson(file); });
+
+/* ---------- Démarrage ---------- */
 setAdminView(location.hash === '#admin');
+if (!cloud) {
+  showAuth('Le module de connexion n’a pas pu être chargé. Vérifiez votre connexion et rechargez la page.');
+} else {
+  cloud.init({ persistent: IS_WINDOWS });
+  cloud.onAuth(onAuthChange);
+}
+// Mode hors ligne : uniquement sur Windows. Sur téléphone, le service worker ne met rien en cache.
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register(IS_WINDOWS ? './sw.js?offline=1' : './sw.js').catch(error => console.warn('Service worker non enregistré.', error)));
+}
