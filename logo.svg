@@ -8,7 +8,7 @@
  <radialGradient id="halo"><stop stop-color="#ffb51c" stop-opacity=".42"/><stop offset="1" stop-color="#ff9d00" stop-opacity="0"/></radialGradient>
  <filter id="depth" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur in="SourceAlpha" stdDeviation="7" result="b"/><feOffset dy="8" result="o"/><feComponentTransfer><feFuncA type="linear" slope=".55"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
-<rect width="80" height="80" rx="180" fill="url(#bg)"/>
+<rect width="1024" height="1024" rx="180" fill="url(#bg)"/>
 <ellipse cx="512" cy="470" rx="450" ry="430" fill="url(#halo)"/>
 <rect x="62" y="62" width="900" height="900" rx="142" fill="none" stroke="url(#gold)" stroke-width="20" filter="url(#depth)"/>
 <rect x="84" y="84" width="856" height="856" rx="126" fill="none" stroke="#ffdf64" stroke-width="3" opacity=".55"/>
