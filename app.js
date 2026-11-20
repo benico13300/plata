@@ -49,7 +49,7 @@ function addMonths(dateString, count) {
 const cloud = window.PlataCloud;
 function loadPrefs() { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (error) { return {}; } }
 function emptyState() {
-  return { accounts: [], operations: [], categories: [...DEFAULT_CATEGORIES], places: [], adminDefaultAccountId: loadPrefs().adminDefaultAccountId || '' };
+  return { accounts: [], operations: [], categories: [...DEFAULT_CATEGORIES], places: [], placesFormatted: false, adminDefaultAccountId: loadPrefs().adminDefaultAccountId || '' };
 }
 let state = emptyState();
 let displayedMonth = new Date();
@@ -104,7 +104,7 @@ function stable(value) { // JSON à clés triées, pour comparer deux documents
 function clean(object) { return JSON.parse(JSON.stringify(object)); } // retire les undefined (refusés par Firestore)
 function accountDoc(account, index) { const { id, ...rest } = account; return clean({ ...rest, order: index }); }
 function operationDoc(operation) { const { id, ...rest } = operation; return clean(rest); }
-function settingsDoc() { return { categories: [...state.categories], places: [...state.places], schemaVersion: 1 }; }
+function settingsDoc() { return { categories: [...state.categories], places: [...state.places], placesFormatted: state.placesFormatted === true, schemaVersion: 1 }; }
 
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify({ adminDefaultAccountId: state.adminDefaultAccountId || '' })); } catch (error) { /* stockage plein ou refusé */ } }
 function saveState() {
@@ -138,6 +138,7 @@ function applyCloudChanges(kind, changes, meta) {
       if (change.pending) return;
       state.categories = Array.isArray(change.data.categories) ? change.data.categories : state.categories;
       state.places = Array.isArray(change.data.places) ? change.data.places : state.places;
+      state.placesFormatted = change.data.placesFormatted === true;
       sync.synced.settings = stable(settingsDoc());
       changed = true;
       return;
@@ -164,6 +165,8 @@ function applyCloudChanges(kind, changes, meta) {
   // L'écran n'apparaît qu'une fois le serveur consulté, ou si le cache de l'appareil contient déjà des données.
   const wasReady = sync.ready;
   sync.ready = allLoaded && (sync.initDone || state.accounts.length > 0);
+  // Une seule fois : les lieux existants passent en « Première lettre majuscule, reste en minuscules », une fois le serveur consulté.
+  if (sync.ready && !state.placesFormatted && ['accounts', 'operations', 'settings'].every(name => sync.meta[name] && !sync.meta[name].fromCache)) { formatPlacesOnce(); changed = true; }
   if (sync.ready && (changed || !wasReady)) { unlockApp(); render(); }
   updateSyncStatus();
 }
@@ -180,7 +183,21 @@ function seedCloud() {
     state.accounts = ACCOUNT_SEEDS.map(account => ({ ...account }));
     state.operations = []; state.categories = [...DEFAULT_CATEGORIES]; state.places = [];
   }
+  state.placesFormatted = true; // aucun lieu existant à reformater
   sync.ready = true; // saveState() a besoin de ce drapeau pour partir
+  saveState();
+}
+
+function capitalizeName(value) {
+  const text = String(value || '').trim().toLocaleLowerCase('fr');
+  return text.charAt(0).toLocaleUpperCase('fr') + text.slice(1);
+}
+function formatPlacesOnce() {
+  const places = [];
+  state.places.forEach(place => { const name = capitalizeName(place); if (name && !places.some(item => sameName(item, name))) places.push(name); });
+  state.operations.forEach(operation => { if (operation.place) operation.place = capitalizeName(operation.place); });
+  state.places = places;
+  state.placesFormatted = true;
   saveState();
 }
 
@@ -231,6 +248,7 @@ function visibleOperations() {
 }
 
 /* ---------- Affichage : tableau de bord ---------- */
+function foldText(value) { return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim(); }
 function render() {
   const monthKey = toMonthKey(displayedMonth);
   const monthEnd = dateEndOfMonth(displayedMonth);
@@ -239,13 +257,19 @@ function render() {
   const accounts = visibleAccounts();
   const monthOperations = visibleOperations().filter(operation => operation.date.startsWith(monthKey)).sort((a, b) => a.date.localeCompare(b.date));
   const filter = $('operation-filter').value || 'all';
-  const byType = type => monthOperations.filter(operation => operation.type === type).length;
+  // Recherche : libellé ou lieu, sur tous les mois (accents et majuscules ignorés), du plus récent au plus ancien.
+  const query = foldText($('operation-search').value);
+  const searching = query !== '';
+  const listed = searching
+    ? visibleOperations().filter(operation => foldText(operation.title).includes(query) || foldText(operation.place).includes(query)).sort((a, b) => b.date.localeCompare(a.date))
+    : monthOperations;
+  const byType = type => listed.filter(operation => operation.type === type).length;
   $('type-filters').innerHTML = Object.entries(TYPE_INFO).map(([type, info]) => {
     const count = byType(type);
     return `<button type="button" class="type-chip${typeFilter.has(type) ? ' is-active' : ''}${count === 0 ? ' is-empty' : ''}" data-type-filter="${type}" aria-pressed="${typeFilter.has(type)}">${info.icon} ${escapeHTML(info.label)} <span class="chip-count">${count}</span></button>`;
   }).join('');
-  const shown = monthOperations.filter(operation => (filter === 'all' || operation.status === filter) && (typeFilter.size === 0 || typeFilter.has(operation.type)));
-  const filtering = typeFilter.size > 0 || filter !== 'all';
+  const shown = listed.filter(operation => (filter === 'all' || operation.status === filter) && (typeFilter.size === 0 || typeFilter.has(operation.type)));
+  const filtering = typeFilter.size > 0 || filter !== 'all' || searching;
   $('filter-summary').classList.toggle('hidden', !filtering);
   if (filtering) {
     // Total des opérations affichées : entrées − sorties ; les virements/épargne ne comptent que s'ils sont seuls.
@@ -253,7 +277,7 @@ function render() {
     const net = real.reduce((total, operation) => total + (operation.type === 'income' ? 1 : -1) * Number(operation.amount), 0);
     const moved = shown.filter(isInternal).reduce((total, operation) => total + Number(operation.amount), 0);
     const totalText = real.length ? `solde ${net > 0 ? '+' : ''}${money(net)}` : shown.length ? `${money(moved)} déplacés` : '';
-    $('filter-summary-text').textContent = `${shown.length} opération${shown.length > 1 ? 's' : ''} affichée${shown.length > 1 ? 's' : ''} sur ${monthOperations.length}${totalText ? ` · ${totalText}` : ''}`;
+    $('filter-summary-text').textContent = `${searching ? `Recherche « ${$('operation-search').value.trim()} » (tous les mois) : ` : ''}${shown.length} opération${shown.length > 1 ? 's' : ''} affichée${shown.length > 1 ? 's' : ''} sur ${listed.length}${totalText ? ` · ${totalText}` : ''}`;
   }
 
   const forecast = accounts.reduce((total, account) => total + accountBalance(account, monthEnd, true), 0);
@@ -290,9 +314,9 @@ function render() {
     const title = escapeHTML(operation.title);
     return `<article class="transaction-row${COLOR_CLASSES[operation.color] ? ` ${COLOR_CLASSES[operation.color]}` : ''}"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" title="${operation.status === 'realized' ? 'Cliquer pour repasser en prévue' : 'Cliquer pour passer en réalisée'}" aria-label="${operation.status === 'realized' ? 'Réalisée, cliquer pour marquer comme prévue' : 'Prévue, cliquer pour marquer comme réalisée'}">${operation.status === 'realized' ? '✓ Réalisée' : '◷ Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
   }).join('');
-  const filteredOut = monthOperations.length > 0 && shown.length === 0;
-  $('empty-title').textContent = filteredOut ? 'Aucune opération ne correspond' : 'Rien à afficher pour le moment';
-  $('empty-text').textContent = filteredOut ? 'Modifiez ou effacez les filtres pour voir les autres opérations du mois.' : 'Ajoutez une opération pour commencer à suivre votre budget.';
+  const filteredOut = listed.length > 0 && shown.length === 0;
+  $('empty-title').textContent = filteredOut || searching ? 'Aucune opération ne correspond' : 'Rien à afficher pour le moment';
+  $('empty-text').textContent = searching && !filteredOut ? 'Aucun libellé ni lieu ne contient ce texte. Essayez un autre mot.' : filteredOut ? 'Modifiez ou effacez les filtres pour voir les autres opérations.' : 'Ajoutez une opération pour commencer à suivre votre budget.';
   $('empty-state').hidden = shown.length > 0;
   $('transactions-list').hidden = shown.length === 0;
 
@@ -305,7 +329,9 @@ function render() {
     renderCategories();
     renderPlaceOptions();
   }
+  renderStats();
   renderAdmin();
+  if ($('dashboard').classList.contains('recurring-active')) renderRecurring();
 }
 
 /* ---------- Formulaire d'opération ---------- */
@@ -473,12 +499,18 @@ function openEditAccount(accountId) {
 }
 
 /* ---------- Administration ---------- */
-function setAdminView(active) {
-  $('dashboard').classList.toggle('admin-active', active);
-  $('admin-nav-link').classList.toggle('active', active);
-  $('nav-dashboard').classList.toggle('active', !active);
-  if (active) renderAdmin();
+// Trois écrans : tableau de bord (« dash »), administration (« admin ») et opérations récurrentes (« recurring »).
+function showView(name) {
+  $('dashboard').classList.toggle('admin-active', name === 'admin');
+  $('dashboard').classList.toggle('recurring-active', name === 'recurring');
+  $('admin-nav-link').classList.toggle('active', name === 'admin');
+  $('recurring-nav-link').classList.toggle('active', name === 'recurring');
+  $('nav-dashboard').classList.toggle('active', name === 'dash');
+  if (name === 'admin') renderAdmin();
+  if (name === 'recurring') renderRecurring();
 }
+function setAdminView(active) { showView(active ? 'admin' : 'dash'); }
+function viewFromHash() { return location.hash === '#admin' ? 'admin' : location.hash === '#recurring' ? 'recurring' : 'dash'; }
 function renderAdmin() {
   const current = selectedAccountId();
   $('admin-default-account').innerHTML = '<option value="">Tous les comptes</option>' + state.accounts.map(account => `<option value="${escapeHTML(account.id)}">${escapeHTML(account.name)}</option>`).join('');
@@ -532,7 +564,8 @@ $('type-filters').addEventListener('click', event => {
   if (typeFilter.has(type)) typeFilter.delete(type); else typeFilter.add(type);
   render();
 });
-$('clear-filters').addEventListener('click', () => { typeFilter.clear(); $('operation-filter').value = 'all'; render(); });
+$('clear-filters').addEventListener('click', () => { typeFilter.clear(); $('operation-filter').value = 'all'; $('operation-search').value = ''; render(); });
+$('operation-search').addEventListener('input', render);
 
 // Vue sur un seul compte
 function pickAccount(id) { viewAccountId = id; render(); }
@@ -588,8 +621,10 @@ $('edit-account-form').addEventListener('submit', event => {
 // Administration : navigation
 $('admin-nav-link').addEventListener('click', event => { event.preventDefault(); history.replaceState(null, '', '#admin'); setAdminView(true); window.scrollTo(0, 0); });
 $('admin-back').addEventListener('click', () => { history.replaceState(null, '', location.pathname + location.search); setAdminView(false); });
-document.querySelectorAll('.sidebar .nav-link:not(#admin-nav-link)').forEach(link => link.addEventListener('click', () => setAdminView(false)));
-window.addEventListener('hashchange', () => setAdminView(location.hash === '#admin'));
+$('recurring-nav-link').addEventListener('click', event => { event.preventDefault(); history.replaceState(null, '', '#recurring'); showView('recurring'); window.scrollTo(0, 0); });
+$('recurring-back').addEventListener('click', () => { history.replaceState(null, '', location.pathname + location.search); showView('dash'); });
+document.querySelectorAll('.sidebar .nav-link:not(#admin-nav-link):not(#recurring-nav-link)').forEach(link => link.addEventListener('click', () => showView('dash')));
+window.addEventListener('hashchange', () => showView(viewFromHash()));
 
 // Administration : compte affiché et comptes
 $('admin-default-account').addEventListener('change', event => { state.adminDefaultAccountId = event.target.value; saveState(); render(); });
@@ -794,8 +829,180 @@ $('export-csv').addEventListener('click', exportCsv);
 $('import-json').addEventListener('click', () => $('import-file').click());
 $('import-file').addEventListener('change', event => { const file = event.target.files[0]; event.target.value = ''; if (file) importJson(file); });
 
+/* ---------- Statistiques : dépenses par catégorie, mois affiché comparé au mois précédent ---------- */
+function expensesByCategory(monthKey) {
+  const totals = new Map();
+  visibleOperations().forEach(operation => {
+    if (isInternal(operation) || operation.type === 'income' || !operation.date.startsWith(monthKey)) return;
+    const name = operation.category || 'Sans catégorie';
+    totals.set(name, (totals.get(name) || 0) + Number(operation.amount));
+  });
+  return totals;
+}
+function renderStats() {
+  const previousDate = new Date(displayedMonth.getFullYear(), displayedMonth.getMonth() - 1, 1);
+  const current = expensesByCategory(toMonthKey(displayedMonth));
+  const previous = expensesByCategory(toMonthKey(previousDate));
+  const total = map => [...map.values()].reduce((sum, value) => sum + value, 0);
+  const currentTotal = total(current); const previousTotal = total(previous);
+  const currentLabel = monthFormatter.format(displayedMonth); const previousLabel = monthFormatter.format(previousDate);
+  $('stats-badge').textContent = currentLabel;
+  $('legend-current').textContent = currentLabel;
+  $('legend-previous').textContent = previousLabel;
+  const empty = currentTotal === 0 && previousTotal === 0;
+  $('stats-intro').textContent = empty ? 'Aucune dépense ce mois-ci ni le mois précédent.'
+    : `Dépenses prévues et réalisées : ${money(currentTotal)} en ${currentLabel}, ${money(previousTotal)} le mois précédent${Math.abs(currentTotal - previousTotal) < 0.005 && previousTotal > 0 ? ' (identique)' : previousTotal > 0 ? ` (${currentTotal >= previousTotal ? '+' : '−'}${money(Math.abs(currentTotal - previousTotal))}, ${currentTotal >= previousTotal ? '+' : '−'}${Math.round(Math.abs(currentTotal - previousTotal) / previousTotal * 100)} %)` : ''}.`;
+  document.querySelector('.stats-legend').classList.toggle('hidden', empty);
+  const names = [...new Set([...current.keys(), ...previous.keys()])]
+    .sort((a, b) => (current.get(b) || 0) - (current.get(a) || 0) || (previous.get(b) || 0) - (previous.get(a) || 0));
+  const rows = names.slice(0, 8).map(name => ({ name, now: current.get(name) || 0, before: previous.get(name) || 0 }));
+  if (names.length > 8) {
+    const rest = names.slice(8);
+    rows.push({ name: `Autres catégories (${rest.length})`, now: rest.reduce((sum, name) => sum + (current.get(name) || 0), 0), before: rest.reduce((sum, name) => sum + (previous.get(name) || 0), 0) });
+  }
+  const scale = Math.max(1, ...rows.map(row => Math.max(row.now, row.before)));
+  const width = value => value > 0 ? Math.max(2, Math.round(value / scale * 100)) : 0;
+  $('stats-list').innerHTML = rows.map(row => {
+    const diff = row.now - row.before;
+    const delta = row.before === 0 && row.now > 0 ? ['new', 'nouveau'] : Math.abs(diff) < 0.005 ? ['same', 'stable'] : diff > 0 ? ['up', `▲ +${money(diff)}`] : ['down', `▼ −${money(-diff)}`];
+    return `<div class="stats-row"><div class="stats-name"><strong>${escapeHTML(row.name)}</strong><span class="stats-delta ${delta[0]}">${escapeHTML(delta[1])}</span></div><div class="bar-line"><div class="bar current" style="width:${width(row.now)}%"></div><em>${money(row.now)}</em></div><div class="bar-line"><div class="bar previous" style="width:${width(row.before)}%"></div><em>${money(row.before)}</em></div></div>`;
+  }).join('');
+}
+
+/* ---------- Opérations récurrentes (séries) ---------- */
+const pad2 = number => String(number).padStart(2, '0');
+function seriesList() {
+  const map = new Map();
+  state.operations.forEach(operation => { if (operation.seriesId) { if (!map.has(operation.seriesId)) map.set(operation.seriesId, []); map.get(operation.seriesId).push(operation); } });
+  return [...map.entries()].map(([id, operations]) => ({ id, operations: operations.sort((a, b) => a.date.localeCompare(b.date)) }))
+    .sort((a, b) => seriesReference(a.operations).title.localeCompare(seriesReference(b.operations).title, 'fr'));
+}
+// Opération de référence d'une série : la prochaine à venir, sinon la dernière.
+function seriesReference(operations) {
+  return operations.find(operation => operation.status !== 'realized') || operations[operations.length - 1];
+}
+// Opérations qui reviennent sur au moins 3 mois (même type, compte et libellé) sans appartenir à une série.
+let detectedCache = [];
+function detectedList() {
+  const groups = new Map();
+  state.operations.forEach(operation => {
+    if (operation.seriesId || !operation.title) return;
+    const key = `${operation.type}|${operation.accountId}|${foldText(operation.title)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(operation);
+  });
+  return [...groups.values()].filter(operations => new Set(operations.map(operation => operation.date.slice(0, 7))).size >= 3)
+    .map(operations => operations.sort((a, b) => a.date.localeCompare(b.date))).sort((a, b) => b.length - a.length);
+}
+function seriesCardHTML(operations, action) {
+  const ref = seriesReference(operations);
+  const info = TYPE_INFO[ref.type] || TYPE_INFO.card;
+  const amounts = operations.map(operation => Number(operation.amount));
+  const variable = Math.min(...amounts) !== Math.max(...amounts);
+  const realized = operations.filter(operation => operation.status === 'realized').length;
+  const detail = [info.label, accountName(ref.accountId), isInternal(ref) ? '' : ref.category, ref.place].filter(Boolean).map(escapeHTML).join(' · ');
+  const first = dateFormatter.format(operationDate(operations[0])); const last = dateFormatter.format(operationDate(operations[operations.length - 1]));
+  return `<article class="series-card${COLOR_CLASSES[ref.color] ? ` ${COLOR_CLASSES[ref.color]}` : ''}"><div class="series-head"><strong>${escapeHTML(ref.title)}</strong><span class="series-amount">${ref.type === 'income' ? '+' : '−'}${money(Number(ref.amount))}</span></div><div class="series-meta">${detail}</div><div class="series-meta">${operations.length} occurrences · du ${escapeHTML(first)} au ${escapeHTML(last)} · ${realized} réalisée${realized > 1 ? 's' : ''}, ${operations.length - realized} prévue${operations.length - realized > 1 ? 's' : ''}${variable ? ` · montants variables (${money(Math.min(...amounts))} à ${money(Math.max(...amounts))})` : ''}</div><div class="series-actions-row">${action}</div></article>`;
+}
+function renderRecurring() {
+  const list = seriesList();
+  $('recurring-series').innerHTML = list.length
+    ? list.map(series => seriesCardHTML(series.operations, `<button class="button button-primary" type="button" data-edit-series="${escapeHTML(series.id)}">Modifier la série</button>`)).join('')
+    : '<p class="series-empty">Aucune série pour le moment. Créez-en une avec « Créer plusieurs occurrences mensuelles » dans une opération, ou à partir des récurrences détectées ci-dessous.</p>';
+  detectedCache = detectedList();
+  $('recurring-detected').innerHTML = detectedCache.length
+    ? detectedCache.map((operations, index) => seriesCardHTML(operations, `<button class="button button-secondary" type="button" data-make-series="${index}">Créer la série</button>`)).join('')
+    : '<p class="series-empty">Aucune récurrence détectée.</p>';
+}
+let editingSeriesId = null;
+function openSeriesDialog(id) {
+  const operations = state.operations.filter(operation => operation.seriesId === id).sort((a, b) => a.date.localeCompare(b.date));
+  if (!operations.length) return;
+  editingSeriesId = id;
+  const ref = seriesReference(operations);
+  const internal = isInternal(ref);
+  const planned = operations.filter(operation => operation.status !== 'realized').length;
+  $('series-summary').textContent = `${operations.length} occurrences (${operations.length - planned} réalisée${operations.length - planned > 1 ? 's' : ''}, ${planned} prévue${planned > 1 ? 's' : ''}) · ${(TYPE_INFO[ref.type] || TYPE_INFO.card).label} · ${accountName(ref.accountId)}`;
+  $('series-title').value = ref.title;
+  $('series-amount').value = Number(ref.amount);
+  $('series-day').value = Number(ref.date.slice(8, 10));
+  const categories = ref.category && !internal && !state.categories.some(name => sameName(name, ref.category)) ? [...state.categories, ref.category] : state.categories;
+  $('series-category').innerHTML = categories.map(name => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join('');
+  $('series-category').value = ref.category || '';
+  const places = ref.place && !state.places.some(name => sameName(name, ref.place)) ? [...state.places, ref.place] : state.places;
+  $('series-place').innerHTML = '<option value="">— Aucun lieu —</option>' + places.map(name => `<option value="${escapeHTML(name)}">${escapeHTML(name)}</option>`).join('');
+  $('series-place').value = ref.place || '';
+  $('series-category-field').classList.toggle('hidden', internal);
+  $('series-place-field').classList.toggle('hidden', internal);
+  const colorInput = document.querySelector(`input[name="series-color"][value="${COLOR_CLASSES[ref.color] ? ref.color : ''}"]`);
+  if (colorInput) colorInput.checked = true;
+  $('series-scope').value = planned ? 'planned' : 'all';
+  $('series-extend').value = 0;
+  $('series-delete-planned').disabled = planned === 0;
+  $('series-dialog').showModal();
+}
+function submitSeries(event) {
+  event.preventDefault();
+  const operations = state.operations.filter(operation => operation.seriesId === editingSeriesId).sort((a, b) => a.date.localeCompare(b.date));
+  if (!operations.length) { $('series-dialog').close(); return; }
+  const ref = seriesReference(operations);
+  const internal = isInternal(ref);
+  const title = $('series-title').value.trim();
+  const amount = Math.round(Number($('series-amount').value) * 100) / 100;
+  const day = Number($('series-day').value);
+  const extend = Math.max(0, Math.min(60, Math.floor(Number($('series-extend').value) || 0)));
+  if (!title || !(amount > 0) || ($('series-day').value !== '' && !(day >= 1 && day <= 31))) { alert('Vérifiez le libellé, le montant (supérieur à 0) et le jour du mois (1 à 31).'); return; }
+  const category = internal ? ref.category : $('series-category').value;
+  const place = internal ? '' : $('series-place').value;
+  const color = (document.querySelector('input[name="series-color"]:checked') || {}).value || '';
+  const targets = $('series-scope').value === 'all' ? operations : operations.filter(operation => operation.status !== 'realized');
+  targets.forEach(operation => {
+    Object.assign(operation, { title, amount, category, color });
+    if (!internal) operation.place = place;
+    if (day >= 1) {
+      const [year, month] = operation.date.split('-').map(Number);
+      operation.date = `${year}-${pad2(month)}-${pad2(Math.min(day, new Date(year, month, 0).getDate()))}`;
+    }
+  });
+  if (extend > 0) {
+    const last = [...operations].sort((a, b) => a.date.localeCompare(b.date))[operations.length - 1];
+    for (let index = 1; index <= extend; index += 1) {
+      let date = addMonths(last.date, index);
+      if (day >= 1) { const [year, month] = date.split('-').map(Number); date = `${year}-${pad2(month)}-${pad2(Math.min(day, new Date(year, month, 0).getDate()))}`; }
+      state.operations.push({ id: makeId(), type: ref.type, amount, accountId: ref.accountId, destinationAccountId: ref.destinationAccountId || null, category, place, title, color, date, status: 'planned', seriesId: editingSeriesId });
+    }
+  }
+  saveState(); $('series-dialog').close(); render();
+  notify(`Série « ${title} » mise à jour : ${targets.length} occurrence${targets.length > 1 ? 's' : ''} modifiée${targets.length > 1 ? 's' : ''}${extend ? `, ${extend} ajoutée${extend > 1 ? 's' : ''}` : ''}.`);
+}
+$('recurring-series').addEventListener('click', event => { const button = event.target.closest('[data-edit-series]'); if (button) openSeriesDialog(button.dataset.editSeries); });
+$('recurring-detected').addEventListener('click', event => {
+  const button = event.target.closest('[data-make-series]');
+  const operations = button && detectedCache[Number(button.dataset.makeSeries)];
+  if (!operations) return;
+  const id = makeId();
+  operations.forEach(operation => { operation.seriesId = id; });
+  saveState(); render(); notify(`Série « ${operations[0].title} » créée (${operations.length} occurrences).`);
+});
+$('series-form').addEventListener('submit', submitSeries);
+['close-series', 'cancel-series'].forEach(id => $(id).addEventListener('click', () => $('series-dialog').close()));
+$('series-delete-planned').addEventListener('click', () => {
+  const planned = state.operations.filter(operation => operation.seriesId === editingSeriesId && operation.status !== 'realized');
+  if (!planned.length || !confirm(`Supprimer les ${planned.length} occurrence(s) prévue(s) de cette série ? Les opérations réalisées sont conservées.`)) return;
+  const ids = new Set(planned.map(operation => operation.id));
+  state.operations = state.operations.filter(operation => !ids.has(operation.id));
+  saveState(); $('series-dialog').close(); render();
+  notify(`${planned.length} occurrence(s) prévue(s) supprimée(s).`);
+});
+$('series-detach').addEventListener('click', () => {
+  const operations = state.operations.filter(operation => operation.seriesId === editingSeriesId);
+  if (!operations.length || !confirm('Dissoudre la série ? Toutes les opérations sont conservées mais ne sont plus reliées entre elles.')) return;
+  operations.forEach(operation => { operation.seriesId = null; });
+  saveState(); $('series-dialog').close(); render();
+});
+
 /* ---------- Démarrage ---------- */
-setAdminView(location.hash === '#admin');
+showView(viewFromHash());
 if (!cloud) {
   showAuth('Le module de connexion n’a pas pu être chargé. Vérifiez votre connexion et rechargez la page.');
 } else {
