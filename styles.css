@@ -142,3 +142,9 @@ body:not(.app-locked) .auth-screen{display:none}
 .legend-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
 .legend-dot.current{background:var(--green)}.legend-dot.previous{background:#c9d1ca}
 #series-dialog{width:min(640px,calc(100% - 28px))}
+
+/* ---------- Écran des statistiques ---------- */
+.stats-view{display:none}
+.stats-active .dash-view,.stats-active .admin-view,.stats-active .recurring-view{display:none}
+.stats-active .stats-view{display:block}
+.stats-view .stats-panel{margin-bottom:0}
