@@ -45,6 +45,7 @@ function addMonths(dateString, count) {
 let state = loadState();
 let displayedMonth = new Date();
 displayedMonth.setDate(1);
+let viewAccountId = ''; // compte cliqué dans « Vos comptes » (vue temporaire, non enregistrée)
 let editingOperationId = null; // opération en cours de modification (null = nouvelle opération)
 
 // Remet les données lues dans le navigateur au bon format (et reprend l'ancien format).
@@ -101,7 +102,8 @@ function accountBalance(account, monthEnd, planned) {
 }
 // « Compte affiché au lancement » (Administration) : un seul compte, ou tous.
 function selectedAccountId() {
-  return state.accounts.some(account => account.id === state.adminDefaultAccountId) ? state.adminDefaultAccountId : '';
+  if (state.accounts.some(account => account.id === state.adminDefaultAccountId)) return state.adminDefaultAccountId;
+  return state.accounts.some(account => account.id === viewAccountId) ? viewAccountId : '';
 }
 function visibleAccounts() {
   const id = selectedAccountId();
@@ -133,7 +135,13 @@ function render() {
   $('upcoming-total').textContent = money(upcoming.reduce((total, operation) => total + (isInternal(operation) ? 0 : (operation.type === 'income' ? 1 : -1) * Number(operation.amount)), 0));
   $('upcoming-count').textContent = upcoming.length ? `${upcoming.length} opération${upcoming.length > 1 ? 's' : ''} prévue${upcoming.length > 1 ? 's' : ''}` : 'Aucune opération prévue';
 
-  $('accounts-list').innerHTML = accounts.map(account => `<div class="account-row"><span class="account-avatar">${escapeHTML(account.icon || '▤')}</span><div class="account-meta"><strong>${escapeHTML(account.name)}</strong><span>Solde au ${escapeHTML(dateFormatter.format(new Date()))}</span></div><strong class="account-balance">${money(accountBalance(account, monthEnd, false))}</strong></div>`).join('');
+  // Quand tous les comptes sont affichés, un clic sur un compte ne garde que celui-ci.
+  const canPick = !selectedAccountId() && state.accounts.length > 1;
+  $('accounts-list').innerHTML = accounts.map(account => `<div class="account-row${canPick ? ' is-clickable' : ''}"${canPick ? ` role="button" tabindex="0" data-pick-account="${escapeHTML(account.id)}" aria-label="Afficher uniquement ${escapeHTML(account.name)}"` : ''}><span class="account-avatar">${escapeHTML(account.icon || '▤')}</span><div class="account-meta"><strong>${escapeHTML(account.name)}</strong><span>Solde au ${escapeHTML(dateFormatter.format(new Date()))}</span></div><strong class="account-balance">${money(accountBalance(account, monthEnd, false))}</strong>${canPick ? '<span class="account-open" aria-hidden="true">›</span>' : ''}</div>`).join('');
+  const viewing = !state.adminDefaultAccountId && selectedAccountId() === viewAccountId && viewAccountId !== '';
+  $('clear-account-filter').classList.toggle('hidden', !viewing);
+  $('accounts-total-label').textContent = accounts.length === 1 && state.accounts.length > 1 ? 'Solde du compte' : 'Total des comptes';
+  $('operations-title').textContent = accounts.length === 1 && state.accounts.length > 1 ? `Opérations · ${accounts[0].name}` : 'Opérations';
 
   const sum = list => list.reduce((total, operation) => total + Number(operation.amount), 0);
   $('month-income').textContent = money(sum(monthOperations.filter(operation => operation.type === 'income')));
@@ -148,7 +156,7 @@ function render() {
     const place = operation.place ? ` · 📍 ${operation.place}` : '';
     const id = escapeHTML(operation.id);
     const title = escapeHTML(operation.title);
-    return `<article class="transaction-row"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" aria-label="${operation.status === 'realized' ? 'Marquer comme prévue' : 'Marquer comme réalisée'}">${operation.status === 'realized' ? 'Réalisée' : 'Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
+    return `<article class="transaction-row"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" title="${operation.status === 'realized' ? 'Cliquer pour repasser en prévue' : 'Cliquer pour passer en réalisée'}" aria-label="${operation.status === 'realized' ? 'Réalisée, cliquer pour marquer comme prévue' : 'Prévue, cliquer pour marquer comme réalisée'}">${operation.status === 'realized' ? '✓ Réalisée' : '◷ Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
   }).join('');
   $('empty-state').hidden = shown.length > 0;
   $('transactions-list').hidden = shown.length === 0;
@@ -238,6 +246,7 @@ function openOperationDialog(operation) {
   updateTypeFields();
   $('operation-amount').value = Number(operation.amount);
   $('operation-date').value = operation.date;
+  if (![...$('source-account').options].some(option => option.value === operation.accountId)) $('source-account').add(new Option(accountName(operation.accountId), operation.accountId));
   $('source-account').value = operation.accountId;
   if (operation.destinationAccountId) $('destination-account').value = operation.destinationAccountId;
   if (!isInternal(operation)) $('operation-category').value = operation.category || '';
@@ -374,6 +383,18 @@ $('transactions-list').addEventListener('click', event => {
     deleteOperation(deleteButton.dataset.delete);
   }
 });
+
+// Vue sur un seul compte
+function pickAccount(id) { viewAccountId = id; render(); }
+$('accounts-list').addEventListener('click', event => {
+  const row = event.target.closest('[data-pick-account]');
+  if (row) pickAccount(row.dataset.pickAccount);
+});
+$('accounts-list').addEventListener('keydown', event => {
+  const row = event.target.closest('[data-pick-account]');
+  if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); pickAccount(row.dataset.pickAccount); }
+});
+$('clear-account-filter').addEventListener('click', () => pickAccount(''));
 
 // Soldes initiaux
 $('close-balances').addEventListener('click', () => $('balances-dialog').close());
