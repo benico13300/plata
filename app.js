@@ -249,6 +249,7 @@ function visibleOperations() {
 
 /* ---------- Affichage : tableau de bord ---------- */
 function foldText(value) { return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('fr').trim(); }
+let plannedOnly = false; // filtre « prévues uniquement » du suivi mensuel
 function render() {
   const monthKey = toMonthKey(displayedMonth);
   const monthEnd = dateEndOfMonth(displayedMonth);
@@ -257,7 +258,15 @@ function render() {
 
   const accounts = visibleAccounts();
   const monthOperations = visibleOperations().filter(operation => operation.date.startsWith(monthKey)).sort((a, b) => a.date.localeCompare(b.date));
-  const filter = $('operation-filter').value || 'all';
+  // Indicateur « prévues » : nombre d'opérations du mois pas encore réalisées ; un clic n'affiche qu'elles.
+  const plannedCount = monthOperations.filter(operation => operation.status !== 'realized').length;
+  if (plannedCount === 0 && plannedOnly) plannedOnly = false;
+  $('planned-count').textContent = plannedCount;
+  $('planned-label').textContent = plannedCount > 1 ? 'prévues' : 'prévue';
+  $('planned-indicator').classList.toggle('is-active', plannedOnly);
+  $('planned-indicator').classList.toggle('is-empty', plannedCount === 0);
+  $('planned-indicator').disabled = plannedCount === 0;
+  $('planned-indicator').setAttribute('aria-pressed', String(plannedOnly));
   // Recherche : libellé ou lieu, sur tous les mois (accents et majuscules ignorés), du plus récent au plus ancien.
   const query = foldText($('operation-search').value);
   const searching = query !== '';
@@ -269,8 +278,8 @@ function render() {
     const count = byType(type);
     return `<button type="button" class="type-chip${typeFilter.has(type) ? ' is-active' : ''}${count === 0 ? ' is-empty' : ''}" data-type-filter="${type}" aria-pressed="${typeFilter.has(type)}">${info.icon} ${escapeHTML(info.label)} <span class="chip-count">${count}</span></button>`;
   }).join('');
-  const shown = listed.filter(operation => (filter === 'all' || operation.status === filter) && (typeFilter.size === 0 || typeFilter.has(operation.type)));
-  const filtering = typeFilter.size > 0 || filter !== 'all' || searching;
+  const shown = listed.filter(operation => (!plannedOnly || operation.status !== 'realized') && (typeFilter.size === 0 || typeFilter.has(operation.type)));
+  const filtering = typeFilter.size > 0 || plannedOnly || searching;
   $('filter-summary').classList.toggle('hidden', !filtering);
   if (filtering) {
     // Total des opérations affichées : entrées − sorties ; les virements/épargne ne comptent que s'ils sont seuls.
@@ -544,7 +553,7 @@ $('operation-dialog').addEventListener('cancel', () => { editingOperationId = nu
 $('operation-type').addEventListener('change', updateTypeFields);
 $('operation-recurring').addEventListener('change', event => $('occurrences-field').classList.toggle('hidden', !event.target.checked));
 $('operation-form').addEventListener('submit', submitOperation);
-$('operation-filter').addEventListener('change', render);
+$('planned-indicator').addEventListener('click', () => { plannedOnly = !plannedOnly; render(); });
 
 $('transactions-list').addEventListener('click', event => {
   const toggleButton = event.target.closest('[data-toggle]');
@@ -570,7 +579,7 @@ $('type-filters').addEventListener('click', event => {
   if (typeFilter.has(type)) typeFilter.delete(type); else typeFilter.add(type);
   render();
 });
-$('clear-filters').addEventListener('click', () => { typeFilter.clear(); $('operation-filter').value = 'all'; $('operation-search').value = ''; render(); });
+$('clear-filters').addEventListener('click', () => { typeFilter.clear(); plannedOnly = false; $('operation-search').value = ''; render(); });
 $('operation-search').addEventListener('input', render);
 
 // Vue sur un seul compte
