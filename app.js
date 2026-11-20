@@ -45,7 +45,7 @@ function addMonths(dateString, count) {
 let state = loadState();
 let displayedMonth = new Date();
 displayedMonth.setDate(1);
-let editingCategory = null; // nom de la catégorie en cours de modification
+let editingOperationId = null; // opération en cours de modification (null = nouvelle opération)
 
 // Remet les données lues dans le navigateur au bon format (et reprend l'ancien format).
 function normalizeState(stored) {
@@ -53,6 +53,7 @@ function normalizeState(stored) {
     accounts: stored.accounts.map(account => ({ ...account })),
     operations: stored.operations.map(operation => ({ ...operation })),
     categories: Array.isArray(stored.categories) ? stored.categories.filter(c => typeof c === 'string' && c.trim()) : [...DEFAULT_CATEGORIES],
+    places: Array.isArray(stored.places) ? stored.places.filter(p => typeof p === 'string' && p.trim()) : [],
     adminDefaultAccountId: typeof stored.adminDefaultAccountId === 'string' ? stored.adminDefaultAccountId : ''
   };
   // Les anciens « types personnalisés » n'existent plus : l'opération redevient
@@ -74,7 +75,7 @@ function loadState() {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (stored && Array.isArray(stored.accounts) && Array.isArray(stored.operations)) return normalizeState(stored);
   } catch (error) { console.warn('Impossible de lire les données locales.', error); }
-  return { accounts: ACCOUNT_SEEDS.map(account => ({ ...account })), operations: [], categories: [...DEFAULT_CATEGORIES], adminDefaultAccountId: '' };
+  return { accounts: ACCOUNT_SEEDS.map(account => ({ ...account })), operations: [], categories: [...DEFAULT_CATEGORIES], places: [], adminDefaultAccountId: '' };
 }
 function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
@@ -144,7 +145,10 @@ function render() {
     const info = TYPE_INFO[operation.type] || TYPE_INFO.card;
     const prefix = operation.type === 'income' ? '+' : isInternal(operation) ? '⇄ ' : '−';
     const destination = isInternal(operation) ? ` → ${accountName(operation.destinationAccountId)}` : '';
-    return `<article class="transaction-row"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${escapeHTML(operation.title)}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${escapeHTML(operation.id)}" aria-label="${operation.status === 'realized' ? 'Marquer comme prévue' : 'Marquer comme réalisée'}">${operation.status === 'realized' ? 'Réalisée' : 'Prévue'}</button><button class="delete-button" type="button" data-delete="${escapeHTML(operation.id)}" aria-label="Supprimer ${escapeHTML(operation.title)}">×</button></article>`;
+    const place = operation.place ? ` · 📍 ${operation.place}` : '';
+    const id = escapeHTML(operation.id);
+    const title = escapeHTML(operation.title);
+    return `<article class="transaction-row"><span class="transaction-symbol">${info.icon}</span><div class="transaction-name"><strong>${title}</strong><span>${escapeHTML(info.label)} · ${escapeHTML(accountName(operation.accountId))}${escapeHTML(destination)}${escapeHTML(place)}</span></div><span class="transaction-category">${escapeHTML(operation.category || info.label)}</span><time class="transaction-date" datetime="${escapeHTML(operation.date)}">${escapeHTML(dateFormatter.format(operationDate(operation)))}</time><strong class="transaction-amount ${operation.type === 'income' ? 'positive' : ''}">${prefix}${money(Number(operation.amount))}</strong><button class="status-button ${operation.status === 'realized' ? 'realized' : ''}" type="button" data-toggle="${id}" aria-label="${operation.status === 'realized' ? 'Marquer comme prévue' : 'Marquer comme réalisée'}">${operation.status === 'realized' ? 'Réalisée' : 'Prévue'}</button><span class="row-actions"><button class="row-button edit-button" type="button" data-edit="${id}" title="Modifier" aria-label="Modifier ${title}">✎</button><button class="row-button delete-button" type="button" data-delete="${id}" title="Supprimer" aria-label="Supprimer ${title}">🗑</button></span></article>`;
   }).join('');
   $('empty-state').hidden = shown.length > 0;
   $('transactions-list').hidden = shown.length === 0;
@@ -155,6 +159,7 @@ function render() {
   $('source-account').innerHTML = optionsFor(accounts);
   $('destination-account').innerHTML = optionsFor(state.accounts);
   renderCategories();
+  renderPlaceOptions();
   renderAdmin();
 }
 
@@ -163,35 +168,93 @@ function renderCategories() {
   const type = $('operation-type').value;
   const select = $('operation-category');
   const previous = select.value;
+  const editing = editingOperationId && state.operations.find(operation => operation.id === editingOperationId);
   $('category-field').classList.toggle('hidden', isInternal({ type }));
-  select.innerHTML = state.categories.map(category => `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`).join('');
+  $('place-field').classList.toggle('hidden', isInternal({ type }));
+  if (isInternal({ type })) $('place-other-field').classList.add('hidden'); else updatePlaceOther();
+  const choices = editing && editing.category && !isInternal(editing) && !state.categories.includes(editing.category) ? [...state.categories, editing.category] : state.categories;
+  select.innerHTML = choices.map(category => `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`).join('');
   const suggested = TYPE_INFO[type]?.category;
   if (suggested && state.categories.includes(suggested)) select.value = suggested;
-  else if (previous && state.categories.includes(previous)) select.value = previous;
+  else if (previous && choices.includes(previous)) select.value = previous;
 }
 function updateTypeFields() {
   const type = $('operation-type').value;
   const internal = isInternal({ type });
   $('destination-account-field').classList.toggle('hidden', !internal);
-  $('operation-recurring').disabled = internal;
-  $('operation-recurring').checked = false;
-  $('occurrences-field').classList.add('hidden');
+  if (!editingOperationId) {
+    $('operation-recurring').disabled = internal;
+    $('operation-recurring').checked = false;
+    $('occurrences-field').classList.add('hidden');
+  }
   $('type-hint').textContent = internal ? 'Choisissez le compte de destination. Ce mouvement ne modifie pas la trésorerie totale.' : type === 'income' ? 'Une entrée augmente automatiquement le solde du compte choisi.' : 'Cette opération diminue automatiquement le solde du compte choisi.';
   renderCategories();
 }
-function openOperationDialog() {
+
+// Lieu : liste issue de l'administration, ou saisie libre via « Autre lieu ».
+const PLACE_OTHER = '__other__';
+function renderPlaceOptions(selected) {
+  const select = $('operation-place');
+  const keep = selected !== undefined ? selected : select.value;
+  select.innerHTML = '<option value="">— Aucun lieu —</option>' + state.places.map(place => `<option value="${escapeHTML(place)}">${escapeHTML(place)}</option>`).join('') + `<option value="${PLACE_OTHER}">Autre lieu (saisie libre)…</option>`;
+  select.value = [...select.options].some(option => option.value === keep) ? keep : '';
+  updatePlaceOther();
+}
+function updatePlaceOther() {
+  const other = $('operation-place').value === PLACE_OTHER;
+  const internal = isInternal({ type: $('operation-type').value });
+  $('place-other-field').classList.toggle('hidden', !other || internal);
+}
+function chosenPlace() {
+  if (isInternal({ type: $('operation-type').value })) return '';
+  const value = $('operation-place').value;
+  return value === PLACE_OTHER ? $('operation-place-other').value.trim() : value;
+}
+
+// Mêmes opérations d'une série à partir d'une date (pour modifier ou supprimer « les suivantes »).
+function followingInSeries(operation) {
+  if (!operation.seriesId) return [];
+  return state.operations.filter(other => other.id !== operation.id && other.seriesId === operation.seriesId && other.date > operation.date && other.title === operation.title && other.accountId === operation.accountId && other.type === operation.type);
+}
+
+function openOperationDialog(operation) {
+  editingOperationId = operation ? operation.id : null;
   $('operation-form').reset();
   const now = new Date();
   $('operation-date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  $('operation-place-other').value = '';
   $('occurrences-field').classList.add('hidden');
+  $('recurring-field').classList.toggle('hidden', Boolean(operation));
+  $('series-field').classList.add('hidden');
+  $('operation-dialog-title').textContent = operation ? 'Modifier l’opération' : 'Nouvelle opération';
+  $('operation-submit').textContent = 'Enregistrer';
+  renderPlaceOptions('');
   $('operation-dialog').showModal();
   updateTypeFields();
+  if (!operation) return;
+  $('operation-type').value = operation.type;
+  updateTypeFields();
+  $('operation-amount').value = Number(operation.amount);
+  $('operation-date').value = operation.date;
+  $('source-account').value = operation.accountId;
+  if (operation.destinationAccountId) $('destination-account').value = operation.destinationAccountId;
+  if (!isInternal(operation)) $('operation-category').value = operation.category || '';
+  $('operation-title').value = operation.title;
+  $('operation-realized').checked = operation.status === 'realized';
+  if (operation.place) {
+    if (state.places.includes(operation.place)) { renderPlaceOptions(operation.place); }
+    else { renderPlaceOptions(PLACE_OTHER); $('operation-place-other').value = operation.place; }
+  }
+  const following = followingInSeries(operation);
+  $('series-field').classList.toggle('hidden', following.length === 0);
+  $('series-label').textContent = `Appliquer aussi aux ${following.length} occurrence${following.length > 1 ? 's' : ''} suivante${following.length > 1 ? 's' : ''} de la série`;
 }
 function submitOperation(event) {
   event.preventDefault();
   const type = $('operation-type').value;
   const internal = isInternal({ type });
-  const recurring = $('operation-recurring').checked;
+  const editing = editingOperationId ? state.operations.find(operation => operation.id === editingOperationId) : null;
+  const recurring = !editing && $('operation-recurring').checked;
   const count = recurring ? Number($('operation-occurrences').value) : 1;
   const date = $('operation-date').value;
   const amount = Math.round(Number($('operation-amount').value) * 100) / 100;
@@ -205,21 +268,37 @@ function submitOperation(event) {
     alert('Le nombre d’occurrences doit être compris entre 2 et 120.');
     return;
   }
-  const seriesId = recurring ? makeId() : null;
-  for (let index = 0; index < count; index += 1) {
-    state.operations.push({
-      id: makeId(), type, amount, date: addMonths(date, index),
-      accountId: sourceId,
-      destinationAccountId: internal ? destinationId : null,
-      category: internal ? TYPE_INFO[type].label : $('operation-category').value,
-      title: $('operation-title').value.trim(),
-      status: $('operation-realized').checked && index === 0 ? 'realized' : 'planned',
-      seriesId
-    });
+  const common = {
+    type, amount,
+    accountId: sourceId,
+    destinationAccountId: internal ? destinationId : null,
+    category: internal ? TYPE_INFO[type].label : $('operation-category').value,
+    place: chosenPlace(),
+    title: $('operation-title').value.trim()
+  };
+  if (editing) {
+    const following = $('operation-apply-series').checked ? followingInSeries(editing) : [];
+    Object.assign(editing, common, { date, status: $('operation-realized').checked ? 'realized' : 'planned' });
+    following.forEach(operation => Object.assign(operation, common, { date: operation.date, status: operation.status }));
+  } else {
+    const seriesId = recurring ? makeId() : null;
+    for (let index = 0; index < count; index += 1) {
+      state.operations.push({ id: makeId(), ...common, date: addMonths(date, index), status: $('operation-realized').checked && index === 0 ? 'realized' : 'planned', seriesId });
+    }
   }
+  editingOperationId = null;
   saveState();
   $('operation-dialog').close();
   render();
+}
+function deleteOperation(operationId) {
+  const operation = state.operations.find(item => item.id === operationId);
+  if (!operation || !confirm(`Supprimer l’opération « ${operation.title} » ?`)) return;
+  const following = followingInSeries(operation);
+  const ids = new Set([operation.id]);
+  if (following.length && confirm(`Supprimer aussi les ${following.length} occurrence${following.length > 1 ? 's' : ''} suivante${following.length > 1 ? 's' : ''} de cette série ?\n\nOK : tout supprimer — Annuler : seulement celle-ci.`)) following.forEach(item => ids.add(item.id));
+  state.operations = state.operations.filter(item => !ids.has(item.id));
+  saveState(); render();
 }
 
 /* ---------- Comptes (dialogues) ---------- */
@@ -250,13 +329,8 @@ function renderAdmin() {
 
   $('admin-account-list').innerHTML = state.accounts.map(account => `<li><span><strong>${escapeHTML(account.name)}</strong><br><small>${escapeHTML(account.kind || 'Autre compte')} · ${money(Number(account.balance) || 0)}</small></span><span class="admin-row-actions"><button type="button" data-edit-account="${escapeHTML(account.id)}" aria-label="Modifier le compte ${escapeHTML(account.name)}">Modifier</button></span></li>`).join('');
 
-  $('admin-category-list').innerHTML = state.categories.map((category, index) => {
-    if (category === editingCategory) {
-      return `<li class="editing"><input type="text" maxlength="40" value="${escapeHTML(category)}" data-category-input="${index}" aria-label="Nouveau nom de la catégorie ${escapeHTML(category)}"><span class="admin-row-actions"><button type="button" data-save-category="${index}">Enregistrer</button><button type="button" class="muted" data-cancel-category>Annuler</button></span></li>`;
-    }
-    const used = state.operations.filter(operation => operation.category === category).length;
-    return `<li><span>${escapeHTML(category)}${used ? ` <small>· ${used} opération${used > 1 ? 's' : ''}</small>` : ''}</span><span class="admin-row-actions"><button type="button" data-edit-category="${index}" aria-label="Modifier la catégorie ${escapeHTML(category)}">Modifier</button><button type="button" data-remove-category="${index}" aria-label="Supprimer la catégorie ${escapeHTML(category)}">Supprimer</button></span></li>`;
-  }).join('');
+  categoriesAdmin.render();
+  placesAdmin.render();
 }
 
 /* ---------- Écouteurs ---------- */
@@ -265,10 +339,13 @@ function changeMonth(offset) { displayedMonth = new Date(displayedMonth.getFullY
 $('previous-month').addEventListener('click', () => changeMonth(-1));
 $('next-month').addEventListener('click', () => changeMonth(1));
 $('current-month').addEventListener('click', () => { displayedMonth = new Date(); displayedMonth.setDate(1); render(); });
-$('open-operation').addEventListener('click', openOperationDialog);
-$('empty-add').addEventListener('click', openOperationDialog);
-$('close-dialog').addEventListener('click', () => $('operation-dialog').close());
-$('cancel-dialog').addEventListener('click', () => $('operation-dialog').close());
+$('open-operation').addEventListener('click', () => openOperationDialog());
+$('empty-add').addEventListener('click', () => openOperationDialog());
+$('operation-place').addEventListener('change', () => { updatePlaceOther(); if ($('operation-place').value === PLACE_OTHER) $('operation-place-other').focus(); });
+const closeOperationDialog = () => { editingOperationId = null; $('operation-dialog').close(); };
+$('close-dialog').addEventListener('click', closeOperationDialog);
+$('cancel-dialog').addEventListener('click', closeOperationDialog);
+$('operation-dialog').addEventListener('cancel', () => { editingOperationId = null; });
 $('operation-type').addEventListener('change', updateTypeFields);
 $('operation-recurring').addEventListener('change', event => $('occurrences-field').classList.toggle('hidden', !event.target.checked));
 $('operation-form').addEventListener('submit', submitOperation);
@@ -276,15 +353,17 @@ $('operation-filter').addEventListener('change', render);
 
 $('transactions-list').addEventListener('click', event => {
   const toggleButton = event.target.closest('[data-toggle]');
+  const editButton = event.target.closest('[data-edit]');
   const deleteButton = event.target.closest('[data-delete]');
   if (toggleButton) {
     const operation = state.operations.find(item => item.id === toggleButton.dataset.toggle);
     if (operation) operation.status = operation.status === 'realized' ? 'planned' : 'realized';
     saveState(); render();
-  }
-  if (deleteButton && confirm('Supprimer cette opération ?')) {
-    state.operations = state.operations.filter(item => item.id !== deleteButton.dataset.delete);
-    saveState(); render();
+  } else if (editButton) {
+    const operation = state.operations.find(item => item.id === editButton.dataset.edit);
+    if (operation) openOperationDialog(operation);
+  } else if (deleteButton) {
+    deleteOperation(deleteButton.dataset.delete);
   }
 });
 
@@ -342,50 +421,68 @@ $('admin-account-list').addEventListener('click', event => {
   if (edit) openEditAccount(edit.dataset.editAccount);
 });
 
-// Administration : catégories (ajouter, modifier, supprimer)
-$('admin-category-form').addEventListener('submit', event => {
-  event.preventDefault();
-  const input = $('admin-category-name');
-  const name = input.value.trim();
-  if (!name) return;
-  if (state.categories.some(category => sameName(category, name))) { alert('Cette catégorie existe déjà.'); return; }
-  state.categories.push(name);
-  saveState(); input.value = ''; render();
-});
-$('admin-category-list').addEventListener('click', event => {
-  const edit = event.target.closest('[data-edit-category]');
-  const save = event.target.closest('[data-save-category]');
-  const cancel = event.target.closest('[data-cancel-category]');
-  const remove = event.target.closest('[data-remove-category]');
-  if (edit) {
-    editingCategory = state.categories[Number(edit.dataset.editCategory)];
-    renderAdmin();
-    $('admin-category-list').querySelector('input')?.focus();
-  } else if (cancel) {
-    editingCategory = null; renderAdmin();
-  } else if (save) {
-    const index = Number(save.dataset.saveCategory);
-    const oldName = state.categories[index];
-    const newName = save.closest('li').querySelector('input').value.trim();
-    if (!newName) return;
-    if (state.categories.some((category, i) => i !== index && sameName(category, newName))) { alert('Cette catégorie existe déjà.'); return; }
-    state.categories[index] = newName;
-    // Les opérations déjà saisies suivent le nouveau nom.
-    state.operations.forEach(operation => { if (operation.category === oldName) operation.category = newName; });
-    editingCategory = null;
-    saveState(); render();
-  } else if (remove) {
-    const index = Number(remove.dataset.removeCategory);
-    const category = state.categories[index];
-    if (!confirm(`Supprimer la catégorie « ${category} » de la liste ? Les opérations existantes seront conservées.`)) return;
-    state.categories.splice(index, 1);
-    saveState(); render();
+// Administration : listes modifiables (catégories, lieux) — ajouter, modifier, supprimer.
+function createListAdmin(cfg) {
+  const list = $(cfg.listId);
+  let editing = null;
+  const items = () => state[cfg.stateKey];
+  const usage = name => state.operations.filter(operation => operation[cfg.opKey] === name).length;
+  function renderList() {
+    list.innerHTML = items().map((name, index) => {
+      if (name === editing) {
+        return `<li class="editing"><input type="text" maxlength="60" value="${escapeHTML(name)}" data-item-input aria-label="Nouveau nom : ${escapeHTML(name)}"><span class="admin-row-actions"><button type="button" data-save-item="${index}">Enregistrer</button><button type="button" class="muted" data-cancel-item>Annuler</button></span></li>`;
+      }
+      const used = usage(name);
+      return `<li><span>${escapeHTML(name)}${used ? ` <small>· ${used} opération${used > 1 ? 's' : ''}</small>` : ''}</span><span class="admin-row-actions"><button type="button" data-edit-item="${index}" aria-label="Modifier : ${escapeHTML(name)}">Modifier</button><button type="button" data-remove-item="${index}" aria-label="Supprimer : ${escapeHTML(name)}">Supprimer</button></span></li>`;
+    }).join('');
   }
-});
-$('admin-category-list').addEventListener('keydown', event => {
-  if (event.key === 'Enter' && event.target.matches('[data-category-input]')) { event.preventDefault(); event.target.closest('li').querySelector('[data-save-category]').click(); }
-  if (event.key === 'Escape' && event.target.matches('[data-category-input]')) { editingCategory = null; renderAdmin(); }
-});
+  $(cfg.formId).addEventListener('submit', event => {
+    event.preventDefault();
+    const input = $(cfg.inputId);
+    const name = input.value.trim();
+    if (!name) return;
+    if (items().some(item => sameName(item, name))) { alert(cfg.exists); return; }
+    items().push(name);
+    saveState(); input.value = ''; render();
+  });
+  list.addEventListener('click', event => {
+    const edit = event.target.closest('[data-edit-item]');
+    const save = event.target.closest('[data-save-item]');
+    const cancel = event.target.closest('[data-cancel-item]');
+    const remove = event.target.closest('[data-remove-item]');
+    if (edit) {
+      editing = items()[Number(edit.dataset.editItem)];
+      renderList();
+      list.querySelector('input')?.focus();
+    } else if (cancel) {
+      editing = null; renderList();
+    } else if (save) {
+      const index = Number(save.dataset.saveItem);
+      const oldName = items()[index];
+      const newName = save.closest('li').querySelector('input').value.trim();
+      if (!newName) return;
+      if (items().some((item, i) => i !== index && sameName(item, newName))) { alert(cfg.exists); return; }
+      items()[index] = newName;
+      // Les opérations déjà saisies suivent le nouveau nom.
+      state.operations.forEach(operation => { if (operation[cfg.opKey] === oldName) operation[cfg.opKey] = newName; });
+      editing = null;
+      saveState(); render();
+    } else if (remove) {
+      const index = Number(remove.dataset.removeItem);
+      if (!confirm(cfg.confirmDelete(items()[index]))) return;
+      items().splice(index, 1);
+      saveState(); render();
+    }
+  });
+  list.addEventListener('keydown', event => {
+    if (!event.target.matches('[data-item-input]')) return;
+    if (event.key === 'Enter') { event.preventDefault(); event.target.closest('li').querySelector('[data-save-item]').click(); }
+    if (event.key === 'Escape') { editing = null; renderList(); }
+  });
+  return { render: renderList };
+}
+const categoriesAdmin = createListAdmin({ stateKey: 'categories', opKey: 'category', listId: 'admin-category-list', formId: 'admin-category-form', inputId: 'admin-category-name', exists: 'Cette catégorie existe déjà.', confirmDelete: name => `Supprimer la catégorie « ${name} » de la liste ? Les opérations existantes seront conservées.` });
+const placesAdmin = createListAdmin({ stateKey: 'places', opKey: 'place', listId: 'admin-place-list', formId: 'admin-place-form', inputId: 'admin-place-name', exists: 'Ce lieu existe déjà.', confirmDelete: name => `Supprimer le lieu « ${name} » de la liste ? Les opérations existantes seront conservées.` });
 
 // Synchronisation entre onglets
 window.addEventListener('storage', event => { if (event.key === STORAGE_KEY) { state = loadState(); render(); } });
