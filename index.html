@@ -87,6 +87,11 @@
             <div class="dialog-actions admin-actions"><button class="button button-primary" id="export-json" type="button">Exporter la sauvegarde (JSON)</button><button class="button button-secondary" id="export-csv" type="button">Exporter les opérations (CSV)</button><button class="button button-secondary" id="import-json" type="button">Restaurer une sauvegarde…</button><button class="button button-secondary" id="sign-out" type="button">Se déconnecter</button></div>
             <input type="file" id="import-file" accept="application/json,.json" hidden>
           </section>
+          <section class="admin-card admin-danger">
+            <h3>Import et remise à zéro</h3>
+            <p class="admin-note">Importez un historique depuis un classeur Excel (chaque ligne est vérifiée avant import) ou repartez d’une base vide.</p>
+            <div class="dialog-actions admin-actions"><button class="button button-primary" id="open-import" type="button">Importer depuis Excel…</button><button class="button button-danger" id="open-clear" type="button">Effacer toutes les données…</button></div>
+          </section>
         </div>
       </section>
 
@@ -95,7 +100,7 @@
   </div>
 
   <dialog id="operation-dialog" class="operation-dialog"><form id="operation-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">VOTRE BUDGET</p><h2 id="operation-dialog-title">Nouvelle opération</h2></div><button class="icon-button close-button" type="button" id="close-dialog" aria-label="Fermer">×</button></div><div class="form-grid">
-    <label class="field field-wide">Type<select id="operation-type" required><option value="card">Carte bancaire</option><option value="income">Entrée d’argent</option><option value="direct-debit">Prélèvement</option><option value="withdrawal">Retrait</option><option value="transfer">Virement</option><option value="savings">Épargne</option></select></label>
+    <label class="field field-wide">Type<select id="operation-type" required><option value="card">Carte bancaire</option><option value="income">Entrée d’argent</option><option value="direct-debit">Prélèvement</option><option value="withdrawal">Retrait</option><option value="check">Chèque</option><option value="transfer">Virement</option><option value="savings">Épargne</option></select></label>
     <label class="field">Montant (€)<input id="operation-amount" type="number" min="0.01" step="0.01" placeholder="0,00" required></label><label class="field">Date<input id="operation-date" type="date" required></label><label class="field" id="source-account-field">Compte<select id="source-account" required></select></label><label class="field hidden" id="destination-account-field">Compte destinataire<select id="destination-account"></select></label><label class="field" id="category-field">Catégorie<select id="operation-category"></select></label><label class="field" id="place-field">Lieu<select id="operation-place"></select></label><label class="field field-wide hidden" id="place-other-field">Nom du lieu<input id="operation-place-other" type="text" maxlength="60" placeholder="Saisir un nouveau lieu"></label><label class="field field-wide check-field hidden" id="place-save-field"><input id="operation-place-save" type="checkbox" checked><span>Ajouter ce lieu à la liste</span></label><label class="field field-wide">Libellé<input id="operation-title" type="text" maxlength="80" placeholder="Ex. Assurance habitation" required></label><label class="field field-wide check-field" id="recurring-field"><input id="operation-recurring" type="checkbox"><span>Créer plusieurs occurrences mensuelles identiques</span></label><label class="field hidden" id="occurrences-field">Nombre de prélèvements<input id="operation-occurrences" type="number" min="2" max="120" value="10"></label><label class="field field-wide check-field hidden" id="series-field"><input id="operation-apply-series" type="checkbox"><span id="series-label">Appliquer aussi aux occurrences suivantes de la série</span></label><label class="field field-wide check-field"><input id="operation-realized" type="checkbox"><span>Cette opération est déjà réalisée</span></label>
   </div><p class="form-hint" id="type-hint">Le type détermine automatiquement l’effet sur vos comptes.</p><div class="dialog-actions"><button class="button button-secondary" id="cancel-dialog" type="button">Annuler</button><button class="button button-primary" id="operation-submit" type="submit">Enregistrer</button></div></form></dialog>
 
@@ -104,6 +109,30 @@
   <dialog id="new-account-dialog" class="operation-dialog compact-dialog"><form id="new-account-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">VOS COMPTES</p><h2>Ajouter un compte</h2></div><button class="icon-button close-button" type="button" id="close-new-account" aria-label="Fermer">×</button></div><div class="form-grid"><label class="field field-wide">Nom du compte<input id="new-account-name" type="text" maxlength="50" placeholder="Ex. Compte joint" required></label><label class="field">Type<select id="new-account-kind"><option value="Compte courant">Compte courant</option><option value="Épargne">Épargne</option><option value="Autre compte">Autre compte</option></select></label><label class="field">Solde initial (€)<input id="new-account-balance" type="number" step="0.01" value="0.00" required></label></div><p class="form-hint">Le solde initial est le solde de départ ; les opérations seront ensuite ajoutées à ce montant.</p><div class="dialog-actions"><button class="button button-secondary" type="button" id="cancel-new-account">Annuler</button><button class="button button-primary" type="submit">Créer le compte</button></div></form></dialog>
 
   <dialog id="edit-account-dialog" class="operation-dialog compact-dialog"><form id="edit-account-form" method="dialog"><input id="edit-account-id" type="hidden"><div class="dialog-heading"><div><p class="eyebrow">VOS COMPTES</p><h2>Modifier le compte</h2></div><button class="icon-button close-button" type="button" id="close-edit-account" aria-label="Fermer">×</button></div><div class="form-grid"><label class="field field-wide">Nom du compte<input id="edit-account-name" type="text" maxlength="50" required></label><label class="field field-wide">Type<select id="edit-account-kind"><option value="Compte courant">Compte courant</option><option value="Épargne">Épargne</option><option value="Autre compte">Autre compte</option></select></label></div><div class="dialog-actions"><button class="button button-secondary" type="button" id="cancel-edit-account">Annuler</button><button class="button button-primary" type="submit">Enregistrer</button></div></form></dialog>
+
+  <dialog id="clear-dialog" class="operation-dialog compact-dialog"><form id="clear-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">ZONE SENSIBLE</p><h2>Effacer toutes les données</h2></div><button class="icon-button close-button" type="button" id="close-clear" aria-label="Fermer">×</button></div><p class="balance-intro">Cette action supprime <strong>définitivement</strong> tous les comptes, toutes les opérations, les catégories et les lieux, ici et dans le cloud. Aucune sauvegarde n’est faite automatiquement.</p><label class="field field-wide">Pour confirmer, tapez <strong>EFFACER</strong><input id="clear-confirm" type="text" autocomplete="off" placeholder="EFFACER"></label><div class="dialog-actions"><button class="button button-secondary" type="button" id="cancel-clear">Annuler</button><button class="button button-danger" id="clear-submit" type="submit" disabled>Tout effacer</button></div></form></dialog>
+
+  <dialog id="import-dialog" class="import-dialog"><div class="import-body">
+    <div class="dialog-heading"><div><p class="eyebrow">IMPORT</p><h2>Importer depuis Excel</h2></div><button class="icon-button close-button" type="button" id="close-import" aria-label="Fermer">×</button></div>
+    <section id="import-step-file">
+      <p class="balance-intro">Sélectionnez un ou plusieurs classeurs (.xlsx, .xlsm). Les fichiers sont lus dans votre navigateur : rien n’est envoyé avant votre validation finale.</p>
+      <div class="dialog-actions import-pick"><button class="button button-primary" id="import-pick" type="button">Choisir les fichiers…</button><input type="file" id="import-excel-file" accept=".xlsx,.xlsm,.xls" multiple hidden></div>
+      <p class="form-hint" id="import-file-status"></p>
+    </section>
+    <section id="import-step-review" class="hidden">
+      <div class="import-settings">
+        <label class="field">Compte de destination<select id="import-account"></select></label>
+        <label class="field" id="import-balance-field">Solde initial (€)<input id="import-balance" type="number" step="0.01"></label>
+        <label class="field" id="import-savings-field">Destination des épargnes (EPA)<select id="import-savings-account"></select></label>
+      </div>
+      <p class="form-hint" id="import-sources"></p>
+      <div class="import-counters" id="import-counters"></div>
+      <div class="import-toolbar"><select id="import-filter"><option value="all">Toutes les lignes</option><option value="ok">Valides</option><option value="warn">À vérifier</option><option value="error">En erreur</option><option value="unchecked">Non cochées</option></select><button class="button button-secondary" id="import-check-valid" type="button">Cocher les valides</button><button class="button button-secondary" id="import-uncheck-all" type="button">Tout décocher</button></div>
+      <div class="import-table-wrap"><table class="import-table"><thead><tr><th></th><th>Statut</th><th>Date</th><th>Type</th><th>Libellé</th><th>Lieu</th><th>Catégorie</th><th>Montant</th><th>État</th></tr></thead><tbody id="import-rows"></tbody></table></div>
+      <div class="import-recap" id="import-recap"></div>
+      <div class="dialog-actions"><button class="button button-secondary" id="import-back" type="button">Changer de fichier</button><button class="button button-primary" id="import-confirm" type="button">Importer</button></div>
+    </section>
+  </div></dialog>
 
   <script src="./cloud.bundle.js" defer></script>
   <script src="./app.js" defer></script>
