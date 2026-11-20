@@ -2,8 +2,8 @@
 // Windows (enregistré avec ?offline=1) : l'application s'ouvre sans réseau grâce au cache de l'interface.
 // Téléphone : aucun cache, l'application exige une connexion (les données ne sont pas conservées sur l'appareil).
 const OFFLINE = new URL(self.location.href).searchParams.get('offline') === '1';
-const CACHE_NAME = 'plata-shell-v10';
-const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './cloud.bundle.js', './manifest.webmanifest', './icon.svg', './logo.svg'];
+const CACHE_NAME = 'plata-shell-v11';
+const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './cloud.bundle.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './logo.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil((OFFLINE ? caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)) : Promise.resolve()).then(() => self.skipWaiting()));
