@@ -72,3 +72,42 @@ body:not(.app-locked) .auth-screen{display:none}
 .toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,30px);max-width:min(440px,calc(100% - 28px));background:#202720;color:#fff;border-radius:12px;padding:12px 16px;font-size:12px;line-height:1.5;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
 .toast.is-visible{opacity:1;transform:translate(-50%,0)}
 @media(max-width:700px){.offline-banner{margin:-6px 0 14px}.page-footer{padding-bottom:6px}}
+
+/* ---------- Import Excel et remise à zéro ---------- */
+.button-danger{background:#b64e40;color:#fff}
+.button-danger:hover{background:#9a3f33}
+.button-danger:disabled,.button-primary:disabled{opacity:.45;cursor:not-allowed}
+.import-dialog{width:min(1280px,calc(100% - 24px));max-height:calc(100% - 24px);border:0;border-radius:14px;padding:0;box-shadow:0 20px 70px #1e342733;color:#202720}
+.import-dialog::backdrop{background:#16241bcc;backdrop-filter:blur(2px)}
+.import-body{padding:22px 24px}
+.import-settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:10px}
+.import-counters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.import-chip{background:#f2f5f1;color:#59635a;border-radius:20px;padding:6px 11px;font-size:11px}
+.import-chip.ok{background:#dff3e6;color:#17713d}
+.import-chip.warn{background:#fff0d9;color:#a85a00}
+.import-chip.error{background:#fbe5e1;color:#a2382b}
+.import-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.import-toolbar select{border:1px solid var(--line);border-radius:7px;padding:8px 10px;font:500 11px 'DM Sans',sans-serif;background:#fff}
+.import-table-wrap{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.import-table{border-collapse:collapse;width:100%;min-width:1060px;font-size:11px}
+.import-table th{position:sticky;top:0;background:#f6f7f4;text-align:left;padding:8px;font-size:10px;letter-spacing:.6px;color:#7b847d;z-index:1}
+.import-table td{padding:5px 6px;border-top:1px solid #f0f2ef;vertical-align:top}
+.import-table input[type=text],.import-table input[type=date],.import-table input[type=number],.import-table select{width:100%;height:31px;border:1px solid #e3e8e2;border-radius:6px;padding:0 6px;font:400 11px 'DM Sans',sans-serif;background:#fff;color:#303a31}
+.import-table input[type=number]{min-width:84px;text-align:right}
+.import-table input[type=date]{min-width:118px}
+.import-table input[type=checkbox]{width:16px;height:16px;margin-top:8px;accent-color:var(--green)}
+.import-table tr.import-warn{background:#fffaf0}
+.import-table tr.import-error{background:#fdf1ef}
+.import-status-cell{min-width:150px}
+.import-badge{display:inline-block;border-radius:20px;padding:3px 9px;font-size:10px;font-weight:700}
+.import-badge.ok{background:#dff3e6;color:#17713d}
+.import-badge.warn{background:#fff0d9;color:#a85a00}
+.import-badge.error{background:#fbe5e1;color:#a2382b}
+.import-issue{display:block;font-size:10px;color:#8a4b00;margin-top:3px}
+.import-origin{display:block;font-size:9px;color:#9aa19b;margin-top:2px}
+.import-recap{background:#f6f9f5;border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-top:12px;font-size:11px}
+.import-recap h3{font-size:12px;margin:0 0 6px}
+.import-recap ul{margin:0;padding-left:18px;line-height:1.7}
+.admin-danger h3{margin-top:0}
+@media(max-width:700px){.import-body{padding:16px 12px}}
+.import-table th:last-child,.import-table td:last-child{min-width:104px}

@@ -20,7 +20,9 @@ Gestion de comptes personnels : PWA (Windows + téléphone) synchronisée avec F
 | `sw.js` | Service worker (cache hors ligne seulement sur Windows) |
 | `firestore.rules` | Règles de sécurité à publier dans la console Firebase |
 
-## Régénérer `cloud.bundle.js`
+## Régénérer `cloud.bundle.js` et `excel.bundle.js`
+
+`excel.bundle.js` (lecteur Excel, chargé à la demande par l'assistant « Importer depuis Excel ») est produit par la même commande à partir de `src/excel.js`.
 
 ```
 npm install
