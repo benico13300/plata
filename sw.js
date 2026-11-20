@@ -1,4 +1,4 @@
-const CACHE_NAME = 'plata-shell-v3';
+const CACHE_NAME = 'plata-shell-v4';
 const APP_SHELL = ['./', './index.html', './styles.css', './accounts.css', './app.js', './accounts.js', './manifest.webmanifest', './icon.svg', './logo.svg'];
 
 self.addEventListener('install', event => {
