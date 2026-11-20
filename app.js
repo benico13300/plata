@@ -772,14 +772,14 @@ const AUTH_MESSAGES = {
   'auth/network-request-failed': 'Pas de connexion réseau : réessayez une fois en ligne.',
   'auth/unauthorized-domain': 'Ce site n’est pas dans les « domaines autorisés » de Firebase Authentication.'
 };
-// Déconnexion à la fermeture : sessionStorage disparaît quand l'application (ou l'onglet) est fermée, pas au rechargement.
+// Déconnexion à la fermeture (téléphone uniquement, pas Windows : le mode hors ligne exige de rester connecté) : sessionStorage disparaît quand l'application (ou l'onglet) est fermée, pas au rechargement.
 // Une connexion retrouvée sans ce témoin vient donc d'une session précédente : on la ferme avant d'afficher quoi que ce soit.
 const SESSION_KEY = 'plata.session';
 function sessionActive() { try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch (error) { return false; } }
 function markSession(active) { try { if (active) sessionStorage.setItem(SESSION_KEY, '1'); else sessionStorage.removeItem(SESSION_KEY); } catch (error) { /* stockage de session indisponible */ } }
 let closedNotice = '';
 function onAuthChange(user, error) {
-  if (user && !sessionActive()) {
+  if (user && !IS_WINDOWS && !sessionActive()) { // sur Windows la session reste ouverte (mode hors ligne)
     closedNotice = 'Vous avez été déconnecté à la fermeture de l’application. Reconnectez-vous pour continuer.';
     cloud.signOut();
     return;
