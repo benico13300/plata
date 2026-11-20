@@ -772,12 +772,25 @@ const AUTH_MESSAGES = {
   'auth/network-request-failed': 'Pas de connexion réseau : réessayez une fois en ligne.',
   'auth/unauthorized-domain': 'Ce site n’est pas dans les « domaines autorisés » de Firebase Authentication.'
 };
+// Déconnexion à la fermeture : sessionStorage disparaît quand l'application (ou l'onglet) est fermée, pas au rechargement.
+// Une connexion retrouvée sans ce témoin vient donc d'une session précédente : on la ferme avant d'afficher quoi que ce soit.
+const SESSION_KEY = 'plata.session';
+function sessionActive() { try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch (error) { return false; } }
+function markSession(active) { try { if (active) sessionStorage.setItem(SESSION_KEY, '1'); else sessionStorage.removeItem(SESSION_KEY); } catch (error) { /* stockage de session indisponible */ } }
+let closedNotice = '';
 function onAuthChange(user, error) {
+  if (user && !sessionActive()) {
+    closedNotice = 'Vous avez été déconnecté à la fermeture de l’application. Reconnectez-vous pour continuer.';
+    cloud.signOut();
+    return;
+  }
   if (!user) {
+    markSession(false);
     stopSync();
     sync.user = null;
     state = emptyState();
-    showAuth(error ? (AUTH_MESSAGES[error] || `Connexion impossible (${error}).`) : 'Connectez-vous avec votre compte Google pour accéder à vos comptes.', { canSignIn: true });
+    showAuth(error ? (AUTH_MESSAGES[error] || `Connexion impossible (${error}).`) : (closedNotice || 'Connectez-vous avec votre compte Google pour accéder à vos comptes.'), { canSignIn: true });
+    closedNotice = '';
     updateSyncStatus();
     return;
   }
@@ -788,7 +801,9 @@ function onAuthChange(user, error) {
 }
 $('sign-in').addEventListener('click', async () => {
   $('sign-in').disabled = true;
-  try { await cloud.signIn(); } catch (error) { showAuth(AUTH_MESSAGES[error.code] || `Connexion impossible (${error.code || error.message}).`, { canSignIn: true }); }
+  markSession(true); // avant la connexion : le témoin doit exister quand Firebase annonce l'utilisateur
+  try { await cloud.signIn(); } catch (error) {
+    markSession(false); showAuth(AUTH_MESSAGES[error.code] || `Connexion impossible (${error.code || error.message}).`, { canSignIn: true }); }
 });
 $('sign-out').addEventListener('click', () => {
   if (confirm('Se déconnecter de Plata ?')) cloud.signOut();
