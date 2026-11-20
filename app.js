@@ -171,7 +171,7 @@ function renderCategories() {
   const editing = editingOperationId && state.operations.find(operation => operation.id === editingOperationId);
   $('category-field').classList.toggle('hidden', isInternal({ type }));
   $('place-field').classList.toggle('hidden', isInternal({ type }));
-  if (isInternal({ type })) $('place-other-field').classList.add('hidden'); else updatePlaceOther();
+  updatePlaceOther();
   const choices = editing && editing.category && !isInternal(editing) && !state.categories.includes(editing.category) ? [...state.categories, editing.category] : state.categories;
   select.innerHTML = choices.map(category => `<option value="${escapeHTML(category)}">${escapeHTML(category)}</option>`).join('');
   const suggested = TYPE_INFO[type]?.category;
@@ -204,6 +204,7 @@ function updatePlaceOther() {
   const other = $('operation-place').value === PLACE_OTHER;
   const internal = isInternal({ type: $('operation-type').value });
   $('place-other-field').classList.toggle('hidden', !other || internal);
+  $('place-save-field').classList.toggle('hidden', !other || internal);
 }
 function chosenPlace() {
   if (isInternal({ type: $('operation-type').value })) return '';
@@ -223,6 +224,7 @@ function openOperationDialog(operation) {
   const now = new Date();
   $('operation-date').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   $('operation-place-other').value = '';
+  $('operation-place-save').checked = true;
   $('occurrences-field').classList.add('hidden');
   $('recurring-field').classList.toggle('hidden', Boolean(operation));
   $('series-field').classList.add('hidden');
@@ -243,7 +245,7 @@ function openOperationDialog(operation) {
   $('operation-realized').checked = operation.status === 'realized';
   if (operation.place) {
     if (state.places.includes(operation.place)) { renderPlaceOptions(operation.place); }
-    else { renderPlaceOptions(PLACE_OTHER); $('operation-place-other').value = operation.place; }
+    else { renderPlaceOptions(PLACE_OTHER); $('operation-place-other').value = operation.place; $('operation-place-save').checked = false; }
   }
   const following = followingInSeries(operation);
   $('series-field').classList.toggle('hidden', following.length === 0);
@@ -268,12 +270,18 @@ function submitOperation(event) {
     alert('Le nombre d’occurrences doit être compris entre 2 et 120.');
     return;
   }
+  let place = chosenPlace();
+  if (place && $('operation-place').value === PLACE_OTHER) {
+    const known = state.places.find(item => sameName(item, place));
+    if (known) place = known; // même lieu déjà dans la liste : on reprend son orthographe
+    else if ($('operation-place-save').checked) state.places.push(place);
+  }
   const common = {
     type, amount,
     accountId: sourceId,
     destinationAccountId: internal ? destinationId : null,
     category: internal ? TYPE_INFO[type].label : $('operation-category').value,
-    place: chosenPlace(),
+    place,
     title: $('operation-title').value.trim()
   };
   if (editing) {
