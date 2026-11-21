@@ -2,7 +2,7 @@
 // Windows (enregistré avec ?offline=1) : l'application s'ouvre sans réseau grâce au cache de l'interface.
 // Téléphone : aucun cache, l'application exige une connexion (les données ne sont pas conservées sur l'appareil).
 const OFFLINE = new URL(self.location.href).searchParams.get('offline') === '1';
-const CACHE_NAME = 'plata-shell-v21';
+const CACHE_NAME = 'plata-shell-v22';
 const APP_SHELL = ['./', './index.html', './styles.css', './app.js', './cloud.bundle.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './logo.svg'];
 
 self.addEventListener('install', event => {
