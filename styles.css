@@ -74,7 +74,7 @@ body:not(.app-locked) .auth-screen{display:none}
 @media(max-width:700px){.offline-banner{margin:-6px 0 14px}.page-footer{padding-bottom:6px}}
 
 /* ---------- Statut de synchronisation en haut de page ---------- */
-.sync-top{display:flex;justify-content:flex-end;margin:-24px 0 14px;font-size:12px;font-weight:500;color:#667168}
+.sync-top{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:-24px 0 14px;font-size:12px;font-weight:500;color:#667168}
 .sync-top .sync-line{background:#fff;border:1px solid var(--line);border-radius:20px;padding:5px 11px}
 @media(max-width:700px){.sync-top{margin:-12px 0 10px;font-size:11px}}
 
@@ -170,3 +170,9 @@ body:not(.app-locked) .auth-screen{display:none}
 .planned-chip:hover{background:#ffeccc}
 .planned-chip.is-active{background:#e08a1e;border-color:#e08a1e;color:#fff;box-shadow:0 0 0 3px #f9dcb0}
 .planned-chip.is-empty{opacity:.5;cursor:default}
+
+/* Bouton de déconnexion en haut de l'application */
+.signout-button{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:5px 12px;font:inherit;font-size:12px;font-weight:600;color:#667168;cursor:pointer}
+.signout-button:hover{color:#b3261e;border-color:#b3261e}
+.signout-button svg{flex:none}
+@media(max-width:700px){.signout-label{display:none}.signout-button{padding:6px 8px}.signout-button svg{width:20px;height:20px}}
