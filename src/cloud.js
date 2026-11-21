@@ -1,7 +1,7 @@
 // Plata — couche « cloud » : connexion Google + Firestore.
 // Ce fichier est assemblé avec le SDK Firebase dans cloud.bundle.js (npm run build).
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, getRedirectResult, onAuthStateChanged, signOut } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache, collection, doc, onSnapshot, writeBatch } from 'firebase/firestore';
 
 // Configuration publique du projet Firebase (pas un secret : la protection vient des règles Firestore).
@@ -45,16 +45,9 @@ function onAuth(cb) {
 async function signIn() {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account', login_hint: ALLOWED_EMAIL });
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (error) {
-    // Pop-up bloquée (certains téléphones / applications installées) : on passe par la redirection.
-    if (error.code === 'auth/popup-blocked' || error.code === 'auth/operation-not-supported-in-this-environment') {
-      await signInWithRedirect(auth, provider);
-      return;
-    }
-    throw error;
-  }
+  // Pas de repli par redirection : sur iPhone, Safari cloisonne le stockage entre le site et firebaseapp.com,
+  // Firebase perd alors son état et affiche « missing initial state ». Mieux vaut signaler l'échec proprement.
+  await signInWithPopup(auth, provider);
 }
 const logOut = () => signOut(auth);
 
