@@ -182,3 +182,9 @@ body:not(.app-locked) .auth-screen{display:none}
 .signout-button:hover{background:#b3261e;color:#fff}
 .signout-button svg{width:20px;height:20px;stroke-width:2.4}
 @media(max-width:700px){.signout-button{padding:9px 11px}.signout-button svg{width:24px;height:24px}}
+
+/* Face ID (téléphone) */
+.faceid-banner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;background:#e8f3ec;border:1px solid #b9d9c4;color:#1f4d33;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.5;margin:-14px 0 16px}
+.faceid-actions{display:flex;align-items:center;gap:10px}
+.auth-card .text-button{margin-top:10px}
+@media(max-width:700px){.faceid-banner{margin:-6px 0 14px}}

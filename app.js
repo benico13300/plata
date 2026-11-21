@@ -717,11 +717,14 @@ const placesAdmin = createListAdmin({ stateKey: 'places', opKey: 'place', listId
 
 
 /* ---------- Connexion, statut de synchronisation, sauvegarde ---------- */
-function showAuth(message, { canSignIn = false } = {}) {
+function showAuth(message, { canSignIn = false, locked = false } = {}) {
   document.body.classList.add('app-locked');
   $('auth-message').textContent = message;
   $('sign-in').classList.toggle('hidden', !canSignIn);
   $('sign-in').disabled = false;
+  $('faceid-unlock').classList.toggle('hidden', !locked);
+  $('faceid-unlock').disabled = false;
+  $('faceid-leave').classList.toggle('hidden', !locked);
 }
 function unlockApp() { document.body.classList.remove('app-locked'); }
 let toastTimer = null;
@@ -774,19 +777,68 @@ const AUTH_MESSAGES = {
   'auth/network-request-failed': 'Pas de connexion réseau : réessayez une fois en ligne.',
   'auth/unauthorized-domain': 'Ce site n’est pas dans les « domaines autorisés » de Firebase Authentication.'
 };
-// Déconnexion à la fermeture (téléphone uniquement, pas Windows : le mode hors ligne exige de rester connecté) : sessionStorage disparaît quand l'application (ou l'onglet) est fermée, pas au rechargement.
-// Une connexion retrouvée sans ce témoin vient donc d'une session précédente : on la ferme avant d'afficher quoi que ce soit.
+// Téléphone uniquement (Windows reste connecté : le mode hors ligne l'exige).
+// sessionStorage disparaît quand l'application est fermée, pas au rechargement : le témoin « plata.session » signifie
+// « déverrouillé depuis l'ouverture de l'application ». Une connexion retrouvée sans ce témoin vient d'une session précédente :
+//  - avec Face ID activé : on affiche l'écran de verrouillage et on ne charge aucune donnée avant la vérification ;
+//  - sans Face ID : on ferme la session Google (reconnexion nécessaire).
 const SESSION_KEY = 'plata.session';
 function sessionActive() { try { return sessionStorage.getItem(SESSION_KEY) === '1'; } catch (error) { return false; } }
 function markSession(active) { try { if (active) sessionStorage.setItem(SESSION_KEY, '1'); else sessionStorage.removeItem(SESSION_KEY); } catch (error) { /* stockage de session indisponible */ } }
+
+/* Face ID : clé d'accès (WebAuthn) liée à l'appareil, vérifiée sur place. C'est un verrou local de l'application :
+   il protège l'ouverture de Plata, mais la vérification n'est pas faite par un serveur. */
+const FACEID_KEY = 'plata.faceid';
+const FACEID_LATER_KEY = 'plata.faceid.later';
+function faceIdId() { try { return localStorage.getItem(FACEID_KEY) || ''; } catch (error) { return ''; } }
+function toBase64(buffer) { let text = ''; new Uint8Array(buffer).forEach(byte => { text += String.fromCharCode(byte); }); return btoa(text); }
+function fromBase64(text) { return Uint8Array.from(atob(text), char => char.charCodeAt(0)); }
+async function faceIdAvailable() {
+  if (IS_WINDOWS) return false;
+  try { return !!(window.PublicKeyCredential && navigator.credentials && await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (error) { return false; }
+}
+async function faceIdRegister() {
+  const credential = await navigator.credentials.create({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'Plata', id: location.hostname },
+    user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'plata', displayName: 'Plata' },
+    pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+    timeout: 60000
+  } });
+  localStorage.setItem(FACEID_KEY, toBase64(credential.rawId));
+}
+async function faceIdVerify() {
+  const assertion = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rpId: location.hostname,
+    allowCredentials: [{ type: 'public-key', id: fromBase64(faceIdId()), transports: ['internal'] }],
+    userVerification: 'required',
+    timeout: 60000
+  } });
+  // Octet 32 des données d'authentification : bit 0x04 = « utilisateur vérifié » (visage ou code de l'appareil).
+  if (!(new Uint8Array(assertion.response.authenticatorData)[32] & 0x04)) throw new Error('not-verified');
+}
+
 let closedNotice = '';
+let lockedUser = null;
 function onAuthChange(user, error) {
   if (user && !IS_WINDOWS && !sessionActive()) { // sur Windows la session reste ouverte (mode hors ligne)
+    if (faceIdId()) { // verrouillé : rien n'est chargé tant que Face ID n'a pas réussi
+      lockedUser = user;
+      stopSync();
+      sync.user = null;
+      state = emptyState();
+      showAuth('Plata est verrouillé.', { locked: true });
+      updateSyncStatus();
+      return;
+    }
     closedNotice = 'Vous avez été déconnecté à la fermeture de l’application. Reconnectez-vous pour continuer.';
     cloud.signOut();
     return;
   }
   if (!user) {
+    lockedUser = null;
     markSession(false);
     stopSync();
     sync.user = null;
@@ -794,18 +846,64 @@ function onAuthChange(user, error) {
     showAuth(error ? (AUTH_MESSAGES[error] || `Connexion impossible (${error}).`) : (closedNotice || 'Connectez-vous avec votre compte Google pour accéder à vos comptes.'), { canSignIn: true });
     closedNotice = '';
     updateSyncStatus();
+    refreshFaceIdUi();
     return;
   }
+  lockedUser = null;
   sync.user = user;
   showAuth('Synchronisation en cours…');
   startSync();
   updateSyncStatus();
+  refreshFaceIdUi();
 }
 $('sign-in').addEventListener('click', async () => {
   $('sign-in').disabled = true;
   markSession(true); // avant la connexion : le témoin doit exister quand Firebase annonce l'utilisateur
   try { await cloud.signIn(); } catch (error) {
     markSession(false); showAuth(AUTH_MESSAGES[error.code] || `Connexion impossible (${error.code || error.message}).`, { canSignIn: true }); }
+});
+
+// Écran de verrouillage : Face ID pour rouvrir, ou déconnexion complète.
+$('faceid-unlock').addEventListener('click', async () => {
+  $('faceid-unlock').disabled = true;
+  try {
+    await faceIdVerify();
+    markSession(true);
+    onAuthChange(lockedUser);
+  } catch (error) {
+    const cancelled = error && (error.name === 'NotAllowedError' || error.name === 'AbortError');
+    showAuth(cancelled ? 'Face ID annulé ou non reconnu. Réessayez.' : 'Face ID n’a pas pu être vérifié. Réessayez, ou déconnectez-vous pour vous reconnecter avec Google.', { locked: true });
+  }
+});
+$('faceid-leave').addEventListener('click', () => { cloud.signOut(); });
+
+// Activation / désactivation de Face ID (bandeau après la connexion, et section Administration).
+async function refreshFaceIdUi() {
+  const available = !!sync.user && await faceIdAvailable();
+  const enabled = !!faceIdId();
+  let later = false;
+  try { later = sessionStorage.getItem(FACEID_LATER_KEY) === '1'; } catch (error) { /* stockage indisponible */ }
+  $('faceid-banner').classList.toggle('hidden', !(available && !enabled && !later));
+  $('faceid-card').classList.toggle('hidden', !available);
+  $('faceid-toggle').textContent = enabled ? 'Désactiver Face ID' : 'Activer Face ID';
+  $('faceid-note').textContent = enabled
+    ? 'Face ID est activé : à chaque ouverture de Plata sur ce téléphone, il vous est demandé à la place du mot de passe Google. C’est un verrou local à l’application.'
+    : 'Désactivé : à la fermeture de l’application, vous êtes déconnecté et devez vous reconnecter avec Google.';
+}
+async function toggleFaceId() {
+  try {
+    if (faceIdId()) { localStorage.removeItem(FACEID_KEY); notify('Face ID désactivé.'); }
+    else { await faceIdRegister(); notify('Face ID activé.'); }
+  } catch (error) {
+    notify('Face ID n’a pas pu être activé.');
+  }
+  refreshFaceIdUi();
+}
+$('faceid-enable').addEventListener('click', toggleFaceId);
+$('faceid-toggle').addEventListener('click', toggleFaceId);
+$('faceid-later').addEventListener('click', () => {
+  try { sessionStorage.setItem(FACEID_LATER_KEY, '1'); } catch (error) { /* stockage indisponible */ }
+  refreshFaceIdUi();
 });
 $('sign-out').addEventListener('click', () => {
   if (confirm('Se déconnecter de Plata ?')) cloud.signOut();
