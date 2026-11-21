@@ -176,3 +176,9 @@ body:not(.app-locked) .auth-screen{display:none}
 .signout-button:hover{color:#b3261e;border-color:#b3261e}
 .signout-button svg{flex:none}
 @media(max-width:700px){.signout-label{display:none}.signout-button{padding:6px 8px}.signout-button svg{width:20px;height:20px}}
+
+/* Déconnexion : bouton bien visible */
+.signout-button{background:#fdecea;border:1.5px solid #b3261e;color:#b3261e;font-size:13px;font-weight:700;padding:8px 14px;box-shadow:0 1px 3px rgba(179,38,30,.25)}
+.signout-button:hover{background:#b3261e;color:#fff}
+.signout-button svg{width:20px;height:20px;stroke-width:2.4}
+@media(max-width:700px){.signout-button{padding:9px 11px}.signout-button svg{width:24px;height:24px}}
