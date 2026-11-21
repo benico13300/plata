@@ -769,6 +769,8 @@ const AUTH_MESSAGES = {
   unauthorized: 'Ce compte Google n’est pas autorisé à accéder à Plata.',
   'auth/popup-closed-by-user': 'Connexion annulée.',
   'auth/cancelled-popup-request': 'Connexion annulée.',
+  'auth/popup-blocked': 'La fenêtre de connexion Google a été bloquée. Ouvrez Plata directement dans Safari (pas depuis une autre application), autorisez les fenêtres surgissantes, puis réessayez.',
+  'auth/operation-not-supported-in-this-environment': 'Connexion impossible dans ce navigateur intégré. Ouvrez Plata directement dans Safari, puis réessayez.',
   'auth/network-request-failed': 'Pas de connexion réseau : réessayez une fois en ligne.',
   'auth/unauthorized-domain': 'Ce site n’est pas dans les « domaines autorisés » de Firebase Authentication.'
 };
