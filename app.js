@@ -104,7 +104,9 @@ function stable(value) { // JSON à clés triées, pour comparer deux documents
 function clean(object) { return JSON.parse(JSON.stringify(object)); } // retire les undefined (refusés par Firestore)
 function accountDoc(account, index) { const { id, ...rest } = account; return clean({ ...rest, order: index }); }
 function operationDoc(operation) { const { id, ...rest } = operation; return clean(rest); }
-function settingsDoc() { return { categories: [...state.categories], places: [...state.places], placesFormatted: state.placesFormatted === true, schemaVersion: 1 }; }
+function settingsDoc() { return { categories: [...state.categories], places: [...state.places], placesFormatted: state.placesFormatted === true, defaultAccountId: state.adminDefaultAccountId || '', schemaVersion: 1 }; }
+// « Compte affiché au lancement » est synchronisé dans le cloud (valable sur le PC et le téléphone).
+let defaultAccountMissingInCloud = false;
 
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify({ adminDefaultAccountId: state.adminDefaultAccountId || '' })); } catch (error) { /* stockage plein ou refusé */ } }
 function saveState() {
@@ -139,7 +141,11 @@ function applyCloudChanges(kind, changes, meta) {
       state.categories = Array.isArray(change.data.categories) ? change.data.categories : state.categories;
       state.places = Array.isArray(change.data.places) ? change.data.places : state.places;
       state.placesFormatted = change.data.placesFormatted === true;
-      sync.synced.settings = stable(settingsDoc());
+      if (typeof change.data.defaultAccountId === 'string') { state.adminDefaultAccountId = change.data.defaultAccountId; savePrefs(); defaultAccountMissingInCloud = false; }
+      else defaultAccountMissingInCloud = true; // réglage pas encore dans le cloud : le choix de cet appareil y sera envoyé
+      const cloudDoc = settingsDoc();
+      if (defaultAccountMissingInCloud && state.adminDefaultAccountId) delete cloudDoc.defaultAccountId; // l'écart avec le cloud déclenchera l'envoi
+      sync.synced.settings = stable(cloudDoc);
       changed = true;
       return;
     }
@@ -167,6 +173,7 @@ function applyCloudChanges(kind, changes, meta) {
   sync.ready = allLoaded && (sync.initDone || state.accounts.length > 0);
   // Une seule fois : les lieux existants passent en « Première lettre majuscule, reste en minuscules », une fois le serveur consulté.
   if (sync.ready && !state.placesFormatted && ['accounts', 'operations', 'settings'].every(name => sync.meta[name] && !sync.meta[name].fromCache)) { formatPlacesOnce(); changed = true; }
+  if (sync.ready && defaultAccountMissingInCloud) { defaultAccountMissingInCloud = false; if (state.adminDefaultAccountId) saveState(); }
   if (sync.ready && (changed || !wasReady)) { unlockApp(); render(); }
   updateSyncStatus();
 }
@@ -822,6 +829,7 @@ async function faceIdVerify() {
 
 let closedNotice = '';
 let lockedUser = null;
+let faceIdAutoTried = false;
 function onAuthChange(user, error) {
   if (user && !IS_WINDOWS && !sessionActive()) { // sur Windows la session reste ouverte (mode hors ligne)
     if (faceIdId()) { // verrouillé : rien n'est chargé tant que Face ID n'a pas réussi
@@ -831,6 +839,7 @@ function onAuthChange(user, error) {
       state = emptyState();
       showAuth('Plata est verrouillé.', { locked: true });
       updateSyncStatus();
+      if (!faceIdAutoTried) { faceIdAutoTried = true; setTimeout(() => unlockWithFaceId({ automatic: true }), 0); } // un seul geste : la fenêtre Face ID s'ouvre d'elle-même
       return;
     }
     closedNotice = 'Vous avez été déconnecté à la fermeture de l’application. Reconnectez-vous pour continuer.';
@@ -839,6 +848,7 @@ function onAuthChange(user, error) {
   }
   if (!user) {
     lockedUser = null;
+    faceIdAutoTried = false;
     markSession(false);
     stopSync();
     sync.user = null;
@@ -864,17 +874,22 @@ $('sign-in').addEventListener('click', async () => {
 });
 
 // Écran de verrouillage : Face ID pour rouvrir, ou déconnexion complète.
-$('faceid-unlock').addEventListener('click', async () => {
+let faceIdBusy = false;
+async function unlockWithFaceId({ automatic = false } = {}) {
+  if (faceIdBusy || !lockedUser) return;
+  faceIdBusy = true;
   $('faceid-unlock').disabled = true;
   try {
     await faceIdVerify();
     markSession(true);
     onAuthChange(lockedUser);
   } catch (error) {
+    // Lancement automatique refusé par le navigateur (pas de geste de l'utilisateur) : on laisse simplement le bouton.
     const cancelled = error && (error.name === 'NotAllowedError' || error.name === 'AbortError');
-    showAuth(cancelled ? 'Face ID annulé ou non reconnu. Réessayez.' : 'Face ID n’a pas pu être vérifié. Réessayez, ou déconnectez-vous pour vous reconnecter avec Google.', { locked: true });
-  }
-});
+    showAuth(automatic ? 'Plata est verrouillé.' : cancelled ? 'Face ID annulé ou non reconnu. Réessayez.' : 'Face ID n’a pas pu être vérifié. Réessayez, ou déconnectez-vous pour vous reconnecter avec Google.', { locked: true });
+  } finally { faceIdBusy = false; }
+}
+$('faceid-unlock').addEventListener('click', () => unlockWithFaceId());
 $('faceid-leave').addEventListener('click', () => { cloud.signOut(); });
 
 // Activation / désactivation de Face ID (bandeau après la connexion, et section Administration).
